@@ -85,32 +85,42 @@ WHY REACT, NOT REACT NATIVE:
 FULL ARCHITECTURE:
 
   FRONTEND (React + Vite + Tailwind + shadcn/ui)
+  Pages:
+  - Patient Search: autocomplete by name/DOB -> loads patient record + docs
+  - Patient Dashboard: view uploaded clinical docs, insurance info
+  - Document Upload: doctor uploads clinical PDFs for a patient
+  - Prior Auth Request: select patient + procedure -> trigger evaluation
+  - Determination View: criteria checklist, citations, approval probability
+  - Admin: upload insurance policy PDFs
   |
   | REST API calls
   v
   BACKEND (Node.js + Express)
   Routes:
-  - POST /api/prior-auth/submit    -> Create new PA request
-  - POST /api/prior-auth/evaluate  -> Trigger RAG evaluation
-  - GET  /api/prior-auth/:id       -> Get PA status + determination
-  - POST /api/documents/upload     -> Upload medical policy PDFs
-  - POST /api/documents/embed      -> Chunk + embed documents
-  - POST /api/patients/upload-fhir -> Upload FHIR patient data
+  - GET  /api/patients/search            -> Autocomplete patient search by name/DOB
+  - GET  /api/patients/:id               -> Get patient info + coverage
+  - GET  /api/patients/:id/documents     -> List patient's uploaded clinical docs
+  - POST /api/patients/:id/documents     -> Upload clinical PDF for a patient
+  - POST /api/policies/upload            -> Upload insurance policy PDF (admin)
+  - POST /api/prior-auth/evaluate        -> Trigger RAG evaluation (patient + procedure)
+  - GET  /api/prior-auth/:id             -> Get PA determination + citations
   |
   | Services:
-  |-- EmbeddingService      -> OpenAI text-embedding-3-small
-  |-- RetrievalService      -> Supabase pgvector (similarity search)
-  |-- GenerationService     -> Anthropic Claude (determination)
-  |-- DocumentService       -> PDF parsing, chunking, metadata
-  |-- CitationService       -> Post-generation citation verification
-  |-- SafetyService         -> SafetyKit PHI/PII redaction
+  |-- PatientService       -> Search & retrieve patient records from Supabase
+  |-- DocumentService      -> Parse PDFs (Claude), chunk, embed, store
+  |-- EmbeddingService     -> OpenAI text-embedding-3-small
+  |-- RetrievalService     -> Supabase pgvector (filter by metadata + similarity)
+  |-- GenerationService    -> Anthropic Claude (determination generation)
+  |-- CitationService      -> Post-generation citation verification
+  |-- SafetyService        -> SafetyKit PHI/PII redaction
   |
   v
-  SUPABASE (Operational Database + Auth + Vector Store)
-  Tables: patients, prior_auth_requests, document_chunks (vector),
-          determinations, audit_log
-  Functions: match_policy_chunks (vector similarity + metadata filter)
-  Note: All data, vectors, and auth live in Supabase. No Databricks needed.
+  SUPABASE (All-in-one: Relational DB + Vector Store + Auth)
+  Relational: patients, coverage
+  Vector: document_chunks (clinical docs + policy docs, with embeddings)
+  Results: prior_auth_requests, determinations
+  Functions: match_documents (metadata filter + vector similarity)
+  Auth: Supabase Auth + Row-Level Security
 
 ================================================================================
 3. FHIR & EHR INTEGRATION
@@ -123,7 +133,7 @@ For Node.js/TypeScript:
 - fhirclient (SMART on FHIR client-js) -> OAuth2/SMART launch flows
 - fhirpath.js                           -> FHIRPath expression evaluation
 
-For Python (if needed for Databricks notebooks):
+For Python (if needed for data scripts):
 - fhir.resources (PyPI)  -> Pydantic-based FHIR R4 models
 - fhirpy                 -> Async FHIR client
 
@@ -140,26 +150,153 @@ FHIR RESOURCES CRITICAL FOR PRIOR AUTH:
   +-- ClaimResponse        (payer decision)
   +-- DocumentReference    (supporting clinical docs)
 
-RECOMMENDED INPUT STRATEGY (3 methods):
+DATA STRATEGY: HYBRID DATABASE (Relational + Vector)
 
-1. MANUAL FORM ENTRY (implement first, best for demo):
-   - Patient name, DOB, member ID
-   - Insurance payer + plan
-   - ICD-10 diagnosis (searchable dropdown)
-   - CPT procedure code (searchable dropdown)
-   - Requesting provider NPI
-   - Clinical notes (free text for AI analysis)
-   Backend converts form data to FHIR resources automatically.
+Core approach: Two layers working together.
+  - RELATIONAL tables for structured patient lookup (name, DOB, insurance)
+  - VECTOR table for semantic search across ALL documents (clinical + policy)
 
-2. FHIR JSON UPLOAD (implement second):
-   - Accept FHIR R4 Bundle via file upload or paste
-   - Parse with @medplum/fhirtypes
-   - Extract Patient, Condition, ServiceRequest, etc.
+Doctors upload patient clinical PDFs (notes, lab reports, imaging). These get
+parsed, chunked, embedded, and stored in the vector DB tagged with patient_id.
+Insurance policy PDFs go through the same pipeline tagged with payer/CPT codes.
+At evaluation time, RAG searches BOTH to match evidence against criteria.
 
-3. SYNTHEA SYNTHETIC DATA (pre-generate for demo):
-   - Generate 50-100 patients using Synthea
-   - Focus on conditions that commonly require prior auth
-   - Pre-loaded in the system for instant demo
+HOW IT WORKS:
+
+  1. DOCUMENT INGESTION (two types, same pipeline):
+
+     a. PATIENT CLINICAL DOCS (uploaded by doctor/staff):
+        Doctor uploads PDF (clinical notes, lab reports, imaging reports)
+             |
+             v
+        Claude parses PDF -> extracts text with structure
+             |
+             v
+        Chunk into ~256-512 token segments
+             |
+             v
+        Embed each chunk (OpenAI) -> store in document_chunks
+        metadata: { type: "clinical", patient_id: "abc",
+                    record_type: "lab_result", date: "2026-01-15",
+                    source_filename: "john_smith_labs_jan2026.pdf" }
+
+     b. INSURANCE POLICY DOCS (uploaded by admin):
+        Admin uploads policy PDF (Aetna CPB, CMS NCD, etc.)
+             |
+             v
+        Same parse -> chunk -> embed pipeline
+             |
+             v
+        metadata: { type: "policy", payer: "Aetna",
+                    cpt_codes: ["27447"], policy_id: "CPB-0537",
+                    section_header: "Medical Necessity Criteria" }
+
+  2. CLINICIAN FLOW:
+     a. Type patient name -> autocomplete search (relational lookup)
+     b. Select patient -> see their uploaded documents + insurance info
+     c. Select procedure requesting auth for (CPT dropdown)
+     d. Hit "Evaluate":
+        - RAG searches policy chunks (filter: payer + CPT code)
+          -> Returns: criteria checklist for that procedure
+        - RAG searches patient clinical chunks (filter: patient_id)
+          -> Semantic search: finds evidence matching each criterion
+        - Claude compares evidence vs criteria -> determination
+     e. View determination with inline citations to both policy AND clinical docs
+
+SUPABASE SCHEMA:
+
+  -- RELATIONAL LAYER: structured data for lookup/filtering
+  -- These power patient search and basic info display
+
+  patients (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL,
+    dob DATE NOT NULL,
+    gender TEXT,
+    member_id TEXT,
+    created_at TIMESTAMPTZ
+  )
+
+  coverage (
+    id UUID PRIMARY KEY,
+    patient_id UUID REFERENCES patients(id),
+    payer_name TEXT NOT NULL,
+    plan_id TEXT,
+    subscriber_id TEXT,
+    group_id TEXT
+  )
+
+  -- VECTOR LAYER: one table for ALL documents (clinical + policy)
+  -- This powers semantic search / RAG
+
+  document_chunks (
+    id BIGSERIAL PRIMARY KEY,
+    content TEXT NOT NULL,              -- the chunk text
+    embedding VECTOR(1536),             -- OpenAI embedding
+    metadata JSONB NOT NULL,            -- flexible metadata (see below)
+    created_at TIMESTAMPTZ
+  )
+
+  -- metadata examples:
+  -- Clinical: { "type": "clinical", "patient_id": "abc", "record_type": "lab_result",
+  --             "date": "2026-01-15", "source_filename": "labs.pdf", "page": 2 }
+  -- Policy:  { "type": "policy", "payer": "Aetna", "policy_id": "CPB-0537",
+  --            "cpt_codes": ["27447"], "section_header": "Medical Necessity", "page": 5 }
+
+  -- INDEXES:
+  -- HNSW index for fast vector similarity search
+  CREATE INDEX ON document_chunks USING hnsw (embedding vector_cosine_ops);
+  -- GIN index for fast JSONB metadata filtering
+  CREATE INDEX ON document_chunks USING gin (metadata);
+
+  -- COMBINED SEARCH FUNCTION (metadata filter + vector similarity in one query):
+  CREATE FUNCTION match_documents(
+    query_embedding VECTOR(1536),
+    filter JSONB,              -- e.g. {"type": "clinical", "patient_id": "abc"}
+    match_threshold FLOAT DEFAULT 0.75,
+    match_count INT DEFAULT 10
+  ) RETURNS TABLE (id BIGINT, content TEXT, metadata JSONB, similarity FLOAT)
+
+  -- PA RESULTS:
+  prior_auth_requests (
+    id UUID PRIMARY KEY,
+    patient_id UUID REFERENCES patients(id),
+    cpt_code TEXT NOT NULL,
+    payer_name TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',     -- pending, approved, denied, needs_info
+    created_at TIMESTAMPTZ
+  )
+
+  determinations (
+    id UUID PRIMARY KEY,
+    request_id UUID REFERENCES prior_auth_requests(id),
+    probability_score FLOAT,           -- 0.0 to 1.0
+    determination TEXT,                -- 'approve' | 'deny' | 'needs_info'
+    criteria_results JSONB,            -- detailed per-criterion breakdown
+    missing_evidence JSONB,            -- what's missing
+    generated_summary TEXT,            -- Letter of Medical Necessity
+    citations JSONB,                   -- source references
+    created_at TIMESTAMPTZ
+  )
+
+WHY HYBRID (RELATIONAL + VECTOR):
+  - Patient lookup by name/DOB is FAST (relational index, not vector search)
+  - Clinical document search is SMART (semantic similarity, not keyword match)
+  - Policy search is FILTERED then SEMANTIC (narrow by payer/CPT, then rank)
+  - One document_chunks table serves both doc types (filtered by metadata)
+  - Citations trace back to specific chunks with page numbers and source files
+
+DATA LOADING OPTIONS:
+  Option A: Synthea bulk load (for demo with pre-populated patients)
+    1. Generate 50-100 Synthea patients: ./run_synthea -p 100 -s 12345 Georgia
+    2. Parse FHIR bundles -> insert patient demographics into patients table
+    3. Convert clinical data (conditions, meds, labs) into text chunks
+    4. Embed and store in document_chunks with patient_id metadata
+  Option B: Doctor uploads PDFs per patient (the real-world flow)
+    1. Doctor selects patient (or creates new patient record)
+    2. Uploads clinical PDFs (notes, labs, imaging reports)
+    3. System parses, chunks, embeds, stores with patient_id
+  Recommended: Build BOTH. Use Option A for demo data, Option B as the real feature.
 
 DA VINCI PRIOR AUTH STANDARDS:
 - PAS (Prior Auth Support): Claim/$submit operation
@@ -492,16 +629,18 @@ DRUG & CODE DATABASES:
 ================================================================================
 
 PRIORITY 1 (Core - Must Have):
-[ ] Policy PDF upload + AI extraction into structured checklist
-[ ] Manual patient data entry form (with FHIR conversion behind the scenes)
-[ ] RAG-powered criteria matching (patient evidence vs policy requirements)
-[ ] Determination output with probability score + citations
+[ ] Supabase schema setup (patients, coverage, document_chunks, PA tables)
+[ ] Clinical PDF upload per patient (parse -> chunk -> embed -> store)
+[ ] Policy PDF upload (parse -> chunk -> embed -> store with payer/CPT metadata)
+[ ] Patient search with autocomplete (name/DOB -> relational lookup)
+[ ] RAG evaluation: search policy chunks + patient clinical chunks -> Claude determination
+[ ] Determination output with probability score + citations to both policy AND clinical docs
 [ ] Missing information detection ("you need HbA1c from past 90 days")
 
 PRIORITY 2 (Demo Polish):
-[ ] FHIR JSON bundle upload (Synthea data)
-[ ] Multi-payer comparison ("Would Aetna AND UHC approve this?")
-[ ] Interactive criteria checklist (green/red indicators)
+[ ] Synthea bulk loader (pre-populate patients + convert FHIR data to clinical chunks)
+[ ] Patient dashboard (list uploaded docs, insurance info)
+[ ] Interactive criteria checklist (green/red per criterion)
 [ ] Auto-generated Letter of Medical Necessity
 
 PRIORITY 3 (Sponsor Integration):
@@ -510,7 +649,7 @@ PRIORITY 3 (Sponsor Integration):
 [ ] Sphinx AI integration (per their offering)
 
 PRIORITY 4 (Nice to Have):
-[ ] Live FHIR API integration (SMART on FHIR sandbox)
+[ ] Multi-payer comparison ("Would Aetna AND UHC approve this?")
 [ ] CPT code search with autocomplete
 [ ] Determination history / audit trail
 [ ] PDF export of determination report
@@ -573,19 +712,25 @@ NEXT IN WORKFLOW:
 -> Run /vibe-agents to generate build instructions
 -> Run /vibe-build to start implementation
 
-BUILD ORDER (11-15 hours estimated across team):
-1. Scaffold React frontend + Express backend           (1 hour)
-2. Set up Supabase project + schema + pgvector          (30 min)
-3. Build document ingestion pipeline                    (2-3 hours)
-4. Build retrieval endpoint                             (1-2 hours)
-5. Build Claude generation with citations               (2-3 hours)
-6. Build frontend UI                                    (3-4 hours)
-7. Polish: error handling, loading states, demo data    (1-2 hours)
+BUILD ORDER (12-16 hours estimated across team):
+1. Scaffold React frontend + Express backend              (1 hour)
+2. Set up Supabase: schema + pgvector + indexes           (30 min)
+3. Document ingestion pipeline (PDF -> Claude parse ->    (2-3 hours)
+   chunk -> embed -> store in document_chunks)
+   Works for BOTH clinical docs and policy docs.
+4. Patient management: create patient, upload clinical    (1-2 hours)
+   PDFs, patient search API + autocomplete UI
+5. Policy upload: admin uploads insurance PDFs            (1 hour, reuses step 3)
+6. RAG evaluation endpoint: search policy + clinical      (2-3 hours)
+   chunks -> Claude determination with citations
+7. Frontend: patient dashboard + determination view       (2-3 hours)
+8. Synthea bulk loader (pre-populate demo data)           (1-2 hours)
+9. Polish: error handling, loading states, demo prep      (1-2 hours)
 
 FIVE DEMO MOMENTS THAT WIN:
-1. The Upload: Policy PDF goes in, AI structures it
-2. The Patient Pull: FHIR record appears with clinical context
-3. The Determination: AI matches evidence to criteria in <30 seconds
+1. The Search: Type "John Smith" -> patient record + uploaded docs appear
+2. The Upload: Doctor uploads clinical notes PDF -> parsed and indexed instantly
+3. The Determination: Select procedure, hit Evaluate -> AI matches in <30 seconds
 4. The Missing Info Catch: "You need HbA1c from past 90 days per Aetna CPB 0852"
 5. The Business Case: "This saved 45 min and $14. At scale: $140K/year savings"
 
