@@ -203,20 +203,12 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
   throw new Error("Evaluation timed out after 35 seconds");
 }
 
-export async function uploadClinical(
-  patientId: string,
-  recordType: string,
-  date: string,
-  file: File
-): Promise<void> {
+export async function uploadClinical(file: File): Promise<void> {
   if (useMock) {
     await delay(1000);
     return;
   }
   const fd = new FormData();
-  fd.append("patient_id", patientId);
-  fd.append("record_type", recordType);
-  fd.append("date", date);
   fd.append("file", file);
   const res = await fetch(toUrl("/api/upload/clinical"), { method: "POST", body: fd });
   if (!res.ok) {
@@ -224,20 +216,12 @@ export async function uploadClinical(
   }
 }
 
-export async function uploadPolicy(
-  payer: string,
-  cptCodes: string[],
-  policyId: string,
-  file: File
-): Promise<void> {
+export async function uploadPolicy(file: File): Promise<void> {
   if (useMock) {
     await delay(1000);
     return;
   }
   const fd = new FormData();
-  fd.append("payer", payer);
-  fd.append("cpt_codes", cptCodes.join(","));
-  fd.append("policy_id", policyId);
   fd.append("file", file);
   const res = await fetch(toUrl("/api/upload/policy"), { method: "POST", body: fd });
   if (!res.ok) {

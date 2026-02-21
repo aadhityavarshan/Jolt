@@ -1,21 +1,15 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
-import { z } from 'zod';
 import { supabase } from '../db/supabase';
 import { parsePdfBuffer } from '../services/pdfParser';
 import { chunkText } from '../services/chunker';
 import { embedBatch } from '../services/embedder';
+import { extractClinicalMetadata, extractPolicyMetadata } from '../services/metadataExtractor';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 // ─── POST /api/upload/clinical ───────────────────────────────────────────────
-
-const clinicalSchema = z.object({
-  patient_id: z.string().uuid(),
-  record_type: z.string().min(1),
-  date: z.string().min(1),
-});
 
 router.post('/clinical', upload.single('file'), async (req: Request, res: Response) => {
   try {
@@ -26,15 +20,14 @@ router.post('/clinical', upload.single('file'), async (req: Request, res: Respon
       return res.status(400).json({ error: 'Only PDF files are accepted', filename: req.file.originalname });
     }
 
-    const parsed = clinicalSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid parameters', details: parsed.error.flatten() });
-    }
-    const { patient_id, record_type, date } = parsed.data;
     const filename = req.file.originalname;
 
     console.log(`[upload/clinical] Parsing PDF: ${filename}`);
     const text = await parsePdfBuffer(req.file.buffer);
+
+    console.log(`[upload/clinical] Extracting metadata via Claude...`);
+    const { patient_id, record_type, date } = await extractClinicalMetadata(text);
+    console.log(`[upload/clinical] Metadata: patient_id=${patient_id}, record_type=${record_type}, date=${date}`);
 
     console.log(`[upload/clinical] Chunking (256 tokens, 32 overlap)...`);
     const chunks = chunkText(text, 256, 32);
@@ -69,21 +62,18 @@ router.post('/clinical', upload.single('file'), async (req: Request, res: Respon
       filename,
       chunks_stored: rows.length,
       patient_id,
+      record_type,
+      date,
     });
   } catch (err) {
     const filename = req.file?.originalname ?? 'unknown';
     console.error(`[upload/clinical] Error processing ${filename}:`, err);
-    res.status(500).json({ error: 'Failed to process clinical document', filename });
+    const message = err instanceof Error ? err.message : 'Failed to process clinical document';
+    res.status(500).json({ error: message, filename });
   }
 });
 
 // ─── POST /api/upload/policy ─────────────────────────────────────────────────
-
-const policySchema = z.object({
-  payer: z.string().min(1),
-  cpt_codes: z.string().min(1),
-  policy_id: z.string().min(1),
-});
 
 router.post('/policy', upload.single('file'), async (req: Request, res: Response) => {
   try {
@@ -94,16 +84,14 @@ router.post('/policy', upload.single('file'), async (req: Request, res: Response
       return res.status(400).json({ error: 'Only PDF files are accepted', filename: req.file.originalname });
     }
 
-    const parsed = policySchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid parameters', details: parsed.error.flatten() });
-    }
-    const { payer, policy_id } = parsed.data;
-    const cpt_codes = parsed.data.cpt_codes.split(',').map((c) => c.trim());
     const filename = req.file.originalname;
 
     console.log(`[upload/policy] Parsing PDF: ${filename}`);
     const text = await parsePdfBuffer(req.file.buffer);
+
+    console.log(`[upload/policy] Extracting metadata via Claude...`);
+    const { payer, cpt_codes, policy_id } = await extractPolicyMetadata(text);
+    console.log(`[upload/policy] Metadata: payer=${payer}, cpt_codes=${cpt_codes.join(',')}, policy_id=${policy_id}`);
 
     console.log(`[upload/policy] Chunking (512 tokens, 64 overlap)...`);
     const chunks = chunkText(text, 512, 64);
@@ -144,7 +132,8 @@ router.post('/policy', upload.single('file'), async (req: Request, res: Response
   } catch (err) {
     const filename = req.file?.originalname ?? 'unknown';
     console.error(`[upload/policy] Error processing ${filename}:`, err);
-    res.status(500).json({ error: 'Failed to process policy document', filename });
+    const message = err instanceof Error ? err.message : 'Failed to process policy document';
+    res.status(500).json({ error: message, filename });
   }
 });
 
