@@ -30,6 +30,20 @@ export interface EvaluationResult {
   evidence: EvidenceQuote[];
 }
 
+export interface EvaluationRun {
+  determinationId: string;
+  patientId: string;
+  patientName: string;
+  cptCode: string;
+  payer: string;
+  status: "pending" | "complete" | "error" | string;
+  requestedAt: string;
+  recommendation: "LIKELY_APPROVED" | "LIKELY_DENIED" | "INSUFFICIENT_INFO" | null;
+  probabilityScore: number | null;
+  missingInfoCount: number;
+  completedAt: string | null;
+}
+
 export interface EvaluateRequest {
   patient_id: string;
   cpt_code: string;

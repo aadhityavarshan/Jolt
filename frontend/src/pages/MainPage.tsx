@@ -1,34 +1,43 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import type { Patient, Procedure, Laterality, EvaluationResult } from "@/lib/types";
+import { useNavigate } from "react-router-dom";
+import type { Patient, Procedure, Laterality } from "@/lib/types";
 import { evaluate, isMockMode, setMockMode } from "@/lib/api";
 import PatientSearch from "@/components/PatientSearch";
-import CPTSearch from "@/components/CPTSearch";
+import CPTSearch from "@/components/CptSearch";
 import AnatomyHighlighter from "@/components/AnatomyHighlighter";
-import EvaluateResults from "@/components/EvaluateResults";
 import { Button } from "@/components/ui/button";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 
 export default function MainPage() {
+  const navigate = useNavigate();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [procedure, setProcedure] = useState<Procedure | null>(null);
   const [laterality, setLaterality] = useState<Laterality>("both");
-  const [result, setResult] = useState<EvaluationResult | null>(null);
   const [mock, setMock] = useState(isMockMode());
 
   const mutation = useMutation({
     mutationFn: evaluate,
-    onSuccess: (data) => setResult(data)
+    onSuccess: (data) => {
+      if (!patient || !procedure) return;
+      navigate("/results", {
+        state: {
+          result: data,
+          patient,
+          procedure,
+          laterality,
+        },
+      });
+    }
   });
 
   const canEvaluate = patient !== null && procedure !== null;
 
   const handleEvaluate = () => {
     if (!canEvaluate) return;
-    setResult(null);
     mutation.mutate({
       patient_id: patient.id,
       cpt_code: procedure.cptCode,
@@ -45,25 +54,12 @@ export default function MainPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-card animate-fade-in">
-        <div className="mx-auto max-w-[1100px] px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Jolt
-              <span className="text-primary"></span>
-            </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Prior Authorization Pre-Check
-
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            
-
-
-
-
-
-            <Link to="/admin">
-              <Button variant="outline" size="sm">Admin</Button>
-            </Link>
+        <div className="mx-auto max-w-[1100px] px-6 py-4 flex items-center">
+          <div className="flex items-center gap-3">
+            <SidebarTrigger />
+            <div>
+              <p className="text-sm text-muted-foreground">Prior Authorization Pre-Check</p>
+            </div>
           </div>
         </div>
       </header>
@@ -76,22 +72,23 @@ export default function MainPage() {
             <div className="animate-fade-in-up stagger-1">
             <PatientSearch
               selected={patient}
-              onSelect={(p) => {setPatient(p);setResult(null);}}
-              onClear={() => {setPatient(null);setResult(null);}} />
+              onSelect={(p) => {setPatient(p);}}
+              onClear={() => {setPatient(null);}} />
             </div>
 
-            <div className="animate-fade-in-up stagger-2">
+            <div className="animate-fade-in-up stagger-2 relative z-20">
             <CPTSearch
               selected={procedure}
               laterality={laterality}
-              onSelect={(p) => {setProcedure(p);setResult(null);}}
-              onLateralityChange={setLaterality} />
+              onSelect={(p) => {setProcedure(p);}}
+              onLateralityChange={setLaterality}
+              onClearSelection={() => { setProcedure(null); }} />
             </div>
 
             <Button
               onClick={handleEvaluate}
               disabled={!canEvaluate || mutation.isPending}
-              className="w-full h-11 animate-fade-in-up stagger-3 transition-all duration-200 hover:shadow-lg hover:shadow-primary/25 active:scale-[0.98]"
+              className="w-full h-11 animate-fade-in-up stagger-3 relative z-0 transition-all duration-200 hover:shadow-lg hover:shadow-primary/25 active:scale-[0.98]"
               size="lg">
 
               {mutation.isPending ?
@@ -117,13 +114,6 @@ export default function MainPage() {
 
           </div>
         </div>
-
-        {/* Results */}
-        {result &&
-        <div className="mt-6 animate-scale-in">
-            <EvaluateResults result={result} />
-          </div>
-        }
       </main>
     </div>);
 
