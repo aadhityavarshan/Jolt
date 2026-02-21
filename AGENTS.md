@@ -43,9 +43,9 @@ For every feature:
 ## Current State
 
 **Last Updated:** 2026-02-21
-**Current Phase:** Phase 1 — Foundation
-**Working On:** Phase 2 — Upload Pipeline
-**Recently Completed:** Full Phase 1 — schema deployed, 50 CPT codes seeded, Supabase connection verified
+**Current Phase:** Phase 4 — RAG Evaluation
+**Working On:** Phase 4 — Verification
+**Recently Completed:** RAG evaluation pipeline (ragPipeline.ts + evaluate routes + wired in app.ts)
 **Blocked By:** None
 
 ---
@@ -81,11 +81,11 @@ For every feature:
 - [ ] Load Synthea synthetic patients (50+ patients) via bulk loader script
 
 ### Phase 4: RAG Evaluation
-- [ ] `POST /api/evaluate` — trigger two-stage RAG pipeline
-- [ ] Stage 1: Extract policy requirements via vector search + Claude
-- [ ] Stage 2: Evaluate each criterion against patient evidence in parallel
-- [ ] `GET /api/evaluate/:determination_id` — poll for result
-- [ ] Structured determination output: probability score, criteria results, citations, missing info
+- [x] `POST /api/evaluate` — trigger two-stage RAG pipeline
+- [x] Stage 1: Extract policy requirements via vector search + Claude
+- [x] Stage 2: Evaluate each criterion against patient evidence in parallel
+- [x] `GET /api/evaluate/:determination_id` — poll for result
+- [x] Structured determination output: probability score, criteria results, citations, missing info
 - [ ] Frontend: DeterminationPage with criteria checklist, score, citations, missing info callout
 
 ### Phase 5: Polish & Demo Prep
