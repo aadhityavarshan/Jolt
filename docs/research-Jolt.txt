@@ -1,0 +1,739 @@
+================================================================================
+JOLT: INTELLIGENT PRIOR AUTHORIZATION
+DEEP RESEARCH & MARKET VALIDATION
+Georgia Tech Hacklytics 2026
+================================================================================
+
+Generated: 2026-02-20
+Context: Hackathon project + Portfolio piece
+Team: Georgia Tech Hacklytics
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+1. MARKET ANALYSIS & COMPETITOR LANDSCAPE
+2. TECHNICAL ARCHITECTURE RECOMMENDATIONS
+3. FHIR & EHR INTEGRATION
+4. LLM PDF PARSING & CPT CODES
+5. RAG PIPELINE ARCHITECTURE
+6. VECTOR DATABASE COMPARISON
+7. STACK EVALUATION & RECOMMENDATIONS
+8. HACKATHON SPONSOR INTEGRATION STRATEGY
+9. PUBLIC DATASETS & DATA SOURCES
+10. MVP FEATURE PRIORITIZATION
+11. RISK ASSESSMENT
+12. COST ESTIMATES
+13. NEXT STEPS
+
+================================================================================
+1. MARKET ANALYSIS & COMPETITOR LANDSCAPE
+================================================================================
+
+MARKET SIZE:
+- US prior auth administrative spend: ~$31 billion/year
+- Serviceable addressable market (mid-size health systems): ~$4-6 billion
+- 35+ million prior auths processed annually in the US
+- CMS mandate (CMS-0057) requires electronic prior auth by Jan 2027
+- Prior auth automation TAM: $10B+ by 2030
+
+KEY STATISTICS:
+- Manual cost per authorization (provider side): $11-15 per transaction
+- 88% of physicians report "high" prior auth burden (AMA 2023)
+- 34% of physicians report patient adverse events linked to PA delays
+- Avg time: 12 min (physician) + 45 min (staff) per PA
+
+COMPETITORS:
+
+| Company          | Side     | Approach                            | Gap Jolt Fills                    |
+|------------------|----------|-------------------------------------|-----------------------------------|
+| Cohere Health    | Payers   | AI clinical review automation       | No provider-side visibility       |
+| CoverMyMeds      | Network  | Electronic transaction network      | Moves forms, doesn't evaluate     |
+| Olive AI         | Providers| RPA bots (wound down 2023)          | RPA is brittle, LLM is robust     |
+| Infinitus Health | Providers| Voice AI calling insurers            | No pre-submission intelligence    |
+| Rhyme Health     | Providers| AI clinical doc review              | Black-box answers, no citations   |
+
+JOLT'S DIFFERENTIATORS:
+1. Explainable AI with policy citations (no competitor does this)
+2. Provider-side pre-submission intelligence
+3. Real-time determination (< 30 seconds vs 1-14 days)
+4. Missing information detection BEFORE submission
+5. Multi-payer policy comparison capability
+6. Open, accessible approach (vs $50K-500K enterprise solutions)
+
+================================================================================
+2. TECHNICAL ARCHITECTURE RECOMMENDATIONS
+================================================================================
+
+RECOMMENDED STACK (REVISED FROM ORIGINAL):
+
+| Layer       | Original Idea       | Recommendation           | Reason                          |
+|-------------|---------------------|--------------------------|---------------------------------|
+| Frontend    | React Native        | React + Vite + Tailwind  | Web demo for hackathon judges   |
+| UI Library  | (none)              | shadcn/ui                | Polished components in minutes  |
+| Backend     | Node + Express      | Node + Express (keep)    | Good choice, fast to build      |
+| LLM         | Anthropic Claude    | Claude Sonnet (keep)     | Native PDF support is key       |
+| Database    | Supabase            | Supabase + pgvector      | Unified data + vector store     |
+| Embeddings  | (undecided)         | OpenAI text-embedding-3-small | $0.02/1M tokens, excellent  |
+| PHI Safety  | (none)              | SafetyKit                | Sponsor + compliance story      |
+
+WHY REACT, NOT REACT NATIVE:
+- Judges click a URL in their browser (vs installing an app)
+- Massive UI component ecosystem (shadcn/ui, Material UI)
+- Faster development (hot reload, browser devtools)
+- Zero benefit of native mobile for a web-demonstrated hackathon
+
+FULL ARCHITECTURE:
+
+  FRONTEND (React + Vite + Tailwind + shadcn/ui)
+  Pages:
+  - Patient Search: autocomplete by name/DOB -> loads patient record + docs
+  - Patient Dashboard: view uploaded clinical docs, insurance info
+  - Document Upload: doctor uploads clinical PDFs for a patient
+  - Prior Auth Request: select patient + procedure -> trigger evaluation
+  - Determination View: criteria checklist, citations, approval probability
+  - Admin: upload insurance policy PDFs
+  |
+  | REST API calls
+  v
+  BACKEND (Node.js + Express)
+  Routes:
+  - GET  /api/patients/search            -> Autocomplete patient search by name/DOB
+  - GET  /api/patients/:id               -> Get patient info + coverage
+  - GET  /api/patients/:id/documents     -> List patient's uploaded clinical docs
+  - POST /api/patients/:id/documents     -> Upload clinical PDF for a patient
+  - POST /api/policies/upload            -> Upload insurance policy PDF (admin)
+  - POST /api/prior-auth/evaluate        -> Trigger RAG evaluation (patient + procedure)
+  - GET  /api/prior-auth/:id             -> Get PA determination + citations
+  |
+  | Services:
+  |-- PatientService       -> Search & retrieve patient records from Supabase
+  |-- DocumentService      -> Parse PDFs (Claude), chunk, embed, store
+  |-- EmbeddingService     -> OpenAI text-embedding-3-small
+  |-- RetrievalService     -> Supabase pgvector (filter by metadata + similarity)
+  |-- GenerationService    -> Anthropic Claude (determination generation)
+  |-- CitationService      -> Post-generation citation verification
+  |-- SafetyService        -> SafetyKit PHI/PII redaction
+  |
+  v
+  SUPABASE (All-in-one: Relational DB + Vector Store + Auth)
+  Relational: patients, coverage
+  Vector: document_chunks (clinical docs + policy docs, with embeddings)
+  Results: prior_auth_requests, determinations
+  Functions: match_documents (metadata filter + vector similarity)
+  Auth: Supabase Auth + Row-Level Security
+
+================================================================================
+3. FHIR & EHR INTEGRATION
+================================================================================
+
+RECOMMENDED FHIR LIBRARIES:
+
+For Node.js/TypeScript:
+- @medplum/core + @medplum/fhirtypes  -> TypeScript FHIR types (RECOMMENDED)
+- fhirclient (SMART on FHIR client-js) -> OAuth2/SMART launch flows
+- fhirpath.js                           -> FHIRPath expression evaluation
+
+For Python (if needed for data scripts):
+- fhir.resources (PyPI)  -> Pydantic-based FHIR R4 models
+- fhirpy                 -> Async FHIR client
+
+FHIR RESOURCES CRITICAL FOR PRIOR AUTH:
+
+  Prior Authorization Bundle
+  +-- Patient              (demographics, member ID)
+  +-- Coverage             (insurance plan, subscriber, payer)
+  +-- Condition            (ICD-10 diagnosis codes)
+  +-- ServiceRequest       (requested procedure)
+  +-- MedicationRequest    (drug prior auth)
+  +-- Procedure            (CPT/HCPCS codes)
+  +-- Claim                (the PA request per Da Vinci PAS)
+  +-- ClaimResponse        (payer decision)
+  +-- DocumentReference    (supporting clinical docs)
+
+DATA STRATEGY: HYBRID DATABASE (Relational + Vector)
+
+Core approach: Two layers working together.
+  - RELATIONAL tables for structured patient lookup (name, DOB, insurance)
+  - VECTOR table for semantic search across ALL documents (clinical + policy)
+
+Doctors upload patient clinical PDFs (notes, lab reports, imaging). These get
+parsed, chunked, embedded, and stored in the vector DB tagged with patient_id.
+Insurance policy PDFs go through the same pipeline tagged with payer/CPT codes.
+At evaluation time, RAG searches BOTH to match evidence against criteria.
+
+HOW IT WORKS:
+
+  1. DOCUMENT INGESTION (two types, same pipeline):
+
+     a. PATIENT CLINICAL DOCS (uploaded by doctor/staff):
+        Doctor uploads PDF (clinical notes, lab reports, imaging reports)
+             |
+             v
+        Claude parses PDF -> extracts text with structure
+             |
+             v
+        Chunk into ~256-512 token segments
+             |
+             v
+        Embed each chunk (OpenAI) -> store in document_chunks
+        metadata: { type: "clinical", patient_id: "abc",
+                    record_type: "lab_result", date: "2026-01-15",
+                    source_filename: "john_smith_labs_jan2026.pdf" }
+
+     b. INSURANCE POLICY DOCS (uploaded by admin):
+        Admin uploads policy PDF (Aetna CPB, CMS NCD, etc.)
+             |
+             v
+        Same parse -> chunk -> embed pipeline
+             |
+             v
+        metadata: { type: "policy", payer: "Aetna",
+                    cpt_codes: ["27447"], policy_id: "CPB-0537",
+                    section_header: "Medical Necessity Criteria" }
+
+  2. CLINICIAN FLOW:
+     a. Type patient name -> autocomplete search (relational lookup)
+     b. Select patient -> see their uploaded documents + insurance info
+     c. Select procedure requesting auth for (CPT dropdown)
+     d. Hit "Evaluate":
+        - RAG searches policy chunks (filter: payer + CPT code)
+          -> Returns: criteria checklist for that procedure
+        - RAG searches patient clinical chunks (filter: patient_id)
+          -> Semantic search: finds evidence matching each criterion
+        - Claude compares evidence vs criteria -> determination
+     e. View determination with inline citations to both policy AND clinical docs
+
+SUPABASE SCHEMA:
+
+  -- RELATIONAL LAYER: structured data for lookup/filtering
+  -- These power patient search and basic info display
+
+  patients (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL,
+    dob DATE NOT NULL,
+    gender TEXT,
+    member_id TEXT,
+    created_at TIMESTAMPTZ
+  )
+
+  coverage (
+    id UUID PRIMARY KEY,
+    patient_id UUID REFERENCES patients(id),
+    payer_name TEXT NOT NULL,
+    plan_id TEXT,
+    subscriber_id TEXT,
+    group_id TEXT
+  )
+
+  -- VECTOR LAYER: one table for ALL documents (clinical + policy)
+  -- This powers semantic search / RAG
+
+  document_chunks (
+    id BIGSERIAL PRIMARY KEY,
+    content TEXT NOT NULL,              -- the chunk text
+    embedding VECTOR(1536),             -- OpenAI embedding
+    metadata JSONB NOT NULL,            -- flexible metadata (see below)
+    created_at TIMESTAMPTZ
+  )
+
+  -- metadata examples:
+  -- Clinical: { "type": "clinical", "patient_id": "abc", "record_type": "lab_result",
+  --             "date": "2026-01-15", "source_filename": "labs.pdf", "page": 2 }
+  -- Policy:  { "type": "policy", "payer": "Aetna", "policy_id": "CPB-0537",
+  --            "cpt_codes": ["27447"], "section_header": "Medical Necessity", "page": 5 }
+
+  -- INDEXES:
+  -- HNSW index for fast vector similarity search
+  CREATE INDEX ON document_chunks USING hnsw (embedding vector_cosine_ops);
+  -- GIN index for fast JSONB metadata filtering
+  CREATE INDEX ON document_chunks USING gin (metadata);
+
+  -- COMBINED SEARCH FUNCTION (metadata filter + vector similarity in one query):
+  CREATE FUNCTION match_documents(
+    query_embedding VECTOR(1536),
+    filter JSONB,              -- e.g. {"type": "clinical", "patient_id": "abc"}
+    match_threshold FLOAT DEFAULT 0.75,
+    match_count INT DEFAULT 10
+  ) RETURNS TABLE (id BIGINT, content TEXT, metadata JSONB, similarity FLOAT)
+
+  -- PA RESULTS:
+  prior_auth_requests (
+    id UUID PRIMARY KEY,
+    patient_id UUID REFERENCES patients(id),
+    cpt_code TEXT NOT NULL,
+    payer_name TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',     -- pending, approved, denied, needs_info
+    created_at TIMESTAMPTZ
+  )
+
+  determinations (
+    id UUID PRIMARY KEY,
+    request_id UUID REFERENCES prior_auth_requests(id),
+    probability_score FLOAT,           -- 0.0 to 1.0
+    determination TEXT,                -- 'approve' | 'deny' | 'needs_info'
+    criteria_results JSONB,            -- detailed per-criterion breakdown
+    missing_evidence JSONB,            -- what's missing
+    generated_summary TEXT,            -- Letter of Medical Necessity
+    citations JSONB,                   -- source references
+    created_at TIMESTAMPTZ
+  )
+
+WHY HYBRID (RELATIONAL + VECTOR):
+  - Patient lookup by name/DOB is FAST (relational index, not vector search)
+  - Clinical document search is SMART (semantic similarity, not keyword match)
+  - Policy search is FILTERED then SEMANTIC (narrow by payer/CPT, then rank)
+  - One document_chunks table serves both doc types (filtered by metadata)
+  - Citations trace back to specific chunks with page numbers and source files
+
+DATA LOADING OPTIONS:
+  Option A: Synthea bulk load (for demo with pre-populated patients)
+    1. Generate 50-100 Synthea patients: ./run_synthea -p 100 -s 12345 Georgia
+    2. Parse FHIR bundles -> insert patient demographics into patients table
+    3. Convert clinical data (conditions, meds, labs) into text chunks
+    4. Embed and store in document_chunks with patient_id metadata
+  Option B: Doctor uploads PDFs per patient (the real-world flow)
+    1. Doctor selects patient (or creates new patient record)
+    2. Uploads clinical PDFs (notes, labs, imaging reports)
+    3. System parses, chunks, embeds, stores with patient_id
+  Recommended: Build BOTH. Use Option A for demo data, Option B as the real feature.
+
+DA VINCI PRIOR AUTH STANDARDS:
+- PAS (Prior Auth Support): Claim/$submit operation
+- CRD (Coverage Requirements Discovery): CDS Hooks for "is PA required?"
+- DTR (Documentation Templates and Rules): What documentation is needed?
+- These form the "Burden Reduction" workflow: CRD -> DTR -> PAS
+
+KEY REFERENCE IMPLEMENTATIONS:
+- github.com/HL7-DaVinci/CRD (Coverage Requirements Discovery)
+- github.com/HL7-DaVinci/prior-auth (PAS reference)
+- github.com/synthetichealth/synthea (patient data generator)
+- github.com/medplum/medplum (open-source FHIR platform)
+
+================================================================================
+4. LLM PDF PARSING & CPT CODES
+================================================================================
+
+PDF PARSING APPROACH:
+
+RECOMMENDED: Claude Native PDF Support (Approach A)
+- Send PDF as base64-encoded document directly to Claude API
+- Claude reads tables, formatting, headers visually
+- Supports up to ~100 pages per PDF
+- NO text extraction library needed
+- Simplest implementation, handles 90% of insurance policies
+
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-20250514",
+    messages: [{
+      role: "user",
+      content: [
+        { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+        { type: "text", text: "Extract all prior authorization requirements as structured JSON..." }
+      ]
+    }]
+  });
+
+FALLBACK: pdf-parse (npm) for documents > 100 pages
+- Zero dependencies, simple API
+- Use pdf-lib to split large PDFs into page ranges first
+
+CHUNKING STRATEGY: Semantic Section Chunking
+Medical policies follow predictable structure:
+  1. Policy Title / Effective Date
+  2. Policy Statement / Summary
+  3. Medical Necessity Criteria (THE KEY SECTION)
+  4. Background / Clinical Information
+  5. CPT/HCPCS Codes
+  6. References
+  7. Revision History
+
+Rules:
+- Never split mid-criterion (keep logical AND/OR relationships intact)
+- Preserve hierarchical context (payer > policy > section > criterion)
+- Extract CPT/ICD codes into filterable metadata
+- 512 tokens for policy docs, 256 for clinical notes
+
+STRUCTURED OUTPUT: Use Claude Tool Use to guarantee valid JSON schema
+- Define a save_policy_checklist tool with your exact schema
+- Claude returns structured JSON matching your requirements
+- Use temperature: 0 for citation-critical tasks
+
+NESTED REQUIREMENTS DATA MODEL:
+  interface Criterion {
+    id: string;
+    text: string;
+    type: "requirement" | "group";
+    operator?: "AND" | "OR" | "X_OF_N";
+    x_of_n_count?: number;
+    is_mandatory: boolean;
+    children?: Criterion[];
+    evidence?: string[];
+    time_constraint?: string;
+  }
+
+CPT CODES:
+- CPT (Current Procedural Terminology) = 5-digit codes for medical procedures
+- Owned/copyrighted by AMA (full set is NOT free)
+- HCPCS Level II codes (A0000-V9999) = CMS-maintained, mostly public
+- For hackathon: extract CPT codes FROM the policy PDFs (they list applicable codes)
+- Supplement with a curated seed list of 20-50 common procedures
+
+CPT CODE APIs:
+- CMS HCPCS Database (FREE): cms.gov/medicare/coding-billing/healthcare-common-procedure-system
+- CMS Medicare Coverage Database (FREE): cms.gov/medicare-coverage-database/
+- CMS Developer Portal (FREE API): developer.cms.gov
+- Stedi (modern X12 EDI API, free tier): stedi.com
+- Eligible API (insurance eligibility, sandbox mode): eligible.com
+
+================================================================================
+5. RAG PIPELINE ARCHITECTURE
+================================================================================
+
+EMBEDDING MODEL: OpenAI text-embedding-3-small
+- 1536 dimensions (configurable to 512 for speed)
+- $0.02 per 1M tokens (~free at hackathon scale)
+- Excellent Node.js SDK support
+- Total cost for hackathon: ~$0.04-$0.10
+
+CHUNKING CONFIG:
+
+  Policy documents: section-based, 512 tokens, 64 overlap
+  Patient records: paragraph-based, 256 tokens, 32 overlap
+  Code descriptions: one chunk per code entity, 128 tokens
+
+  Critical metadata per chunk:
+  - document_id, document_title
+  - section_header, subsection_header
+  - page_number, payer_name, effective_date
+  - cpt_codes_mentioned, icd_codes_mentioned
+
+RETRIEVAL STRATEGY (4-Stage):
+
+  STAGE 1: METADATA FILTERING
+  - Filter by payer_name, cpt_code, document_type
+  - Narrows from thousands to ~50-200 chunks
+
+  STAGE 2: VECTOR SEARCH (Supabase pgvector)
+  - Similarity search within Stage 1 results
+  - Top-K = 15-20, threshold = 0.75
+  - HNSW index for speed
+
+  STAGE 3: RERANKING (Optional - Cohere Rerank)
+  - Cross-encoder reranking of top-20 to top-8-10
+  - Dramatically improves precision for ~2 lines of code
+
+  STAGE 4: CLAUDE GENERATION WITH CITATIONS
+  - Numbered source context + system prompt
+  - Structured determination output
+
+Supabase SQL function for combined metadata + vector search:
+
+  CREATE OR REPLACE FUNCTION match_policy_chunks(
+    query_embedding vector(1536),
+    target_payer text,
+    target_cpt_code text,
+    match_threshold float DEFAULT 0.75,
+    match_count int DEFAULT 15
+  ) RETURNS TABLE (id bigint, content text, metadata jsonb, similarity float)
+
+CITATION ACCURACY (100% target):
+- Every claim ends with [Source N]
+- Require verbatim quotes from source documents
+- Post-generation verification: check every [Source N] maps to a real chunk
+- Flag uncited claims as [UNSUPPORTED]
+- Temperature = 0 for citation-critical generation
+- "Quote first, then reason" prompt pattern
+
+================================================================================
+6. VECTOR DATABASE COMPARISON
+================================================================================
+
+| Feature              | Supabase pgvector | Databricks Vector Search | Pinecone    | Chroma      |
+|----------------------|-------------------|--------------------------|-------------|-------------|
+| Setup time           | 5 min (SQL ext)   | 30-60 min                | 10 min      | 2 min       |
+| Hybrid search        | Yes (tsvector)    | Yes                      | Yes         | No          |
+| Filtering            | Full SQL WHERE    | SQL-like                 | Metadata    | Metadata    |
+| Already in stack?    | YES               | Considering              | No          | No          |
+| Hackathon cost       | Free tier         | Requires workspace       | Free 100K   | Free (OSS)  |
+| Node.js SDK          | @supabase/supabase-js | REST API             | Yes         | Via REST    |
+
+RECOMMENDATION: Supabase pgvector (PRIMARY)
+- Zero additional infrastructure (already using Supabase)
+- Enable with: CREATE EXTENSION vector;
+- Unified data layer: JOINs between vectors and relational data
+- HNSW indexing: >95% recall at millisecond latency
+
+DECISION: Databricks removed from stack. Supabase pgvector handles all vector needs.
+
+================================================================================
+7. STACK EVALUATION & RECOMMENDATIONS
+================================================================================
+
+FINAL RECOMMENDED STACK:
+
+Frontend:
+  - React 18 + TypeScript (via Vite)
+  - Tailwind CSS + shadcn/ui
+  - @supabase/supabase-js
+  - @tanstack/react-query
+  - react-router-dom
+
+Backend:
+  - Node.js + Express
+  - @anthropic-ai/sdk (Claude for generation + PDF parsing)
+  - openai (for embeddings only)
+  - @supabase/supabase-js
+  - pdf-parse (fallback PDF text extraction)
+  - zod (schema validation)
+  - cors, dotenv, multer (file uploads)
+
+Database:
+  - Supabase (Postgres + pgvector + Auth + Row-Level Security)
+
+IMPORTANT NOTE ON LANGCHAIN:
+- Can use for document loaders and text splitters
+- DO NOT use as orchestration framework
+- Write your own retrieval/generation logic (easier to debug at hackathon)
+
+================================================================================
+8. HACKATHON SPONSOR INTEGRATION STRATEGY
+================================================================================
+
+SPONSOR MAP:
+
+  [Patient FHIR Record]
+       |
+       v
+  [SafetyKit: PHI/PII Redaction] -- Trust & safety layer
+       |
+       v
+  [Jolt Backend]
+       |
+       +---> [Supabase: DB + Vector Store + Auth]
+       +---> [Actian: Structured policy rules DB + Analytics dashboard]
+       +---> [Sphinx AI: Check Devpost for their specific offering]
+       |
+       v
+  [AI Determination with Citations]
+       |
+       v
+  [GrowthFactor: Business metrics + pitch story]
+
+SAFETYKIT (Trust & Safety):
+- PHI/PII detection and redaction on all clinical text
+- Input sanitization before LLM processing
+- Output filtering before displaying to users
+- Compliance audit trail logging
+- "Protected by SafetyKit" badge in UI
+
+ACTIAN (Data Platform):
+- Structured policy rules database (CPT codes, ICD-10, criteria trees)
+- Authorization transaction analytics
+- DataConnect ETL from multiple sources (FHIR, CMS, CSV)
+- Analytics dashboard: approval rates, processing times, denial reasons
+
+SPHINX AI:
+- Check Devpost/Discord for specific offering
+- Potential: model evaluation, prompt management, agent orchestration
+- Less-known sponsor = less competition for their prize track (high ROI)
+
+GROWTHFACTOR (Business Case):
+- Unit economics: $11-15 manual vs <$1 with Jolt
+- Processing time: 1-14 days vs <30 seconds
+- Staff hours saved: 100-150 hrs per 1000 auths -> 5-10 hrs
+- Market size: $31B annual admin spend
+- Regulatory tailwind: CMS-0057 mandate by Jan 2027
+
+DATABRICKS: REMOVED FROM STACK
+- Decision: Not needed. Supabase pgvector handles vector storage + search.
+- Simplifies architecture and reduces setup time significantly.
+
+================================================================================
+9. PUBLIC DATASETS & DATA SOURCES
+================================================================================
+
+INSURANCE MEDICAL POLICY PDFs (FREE):
+
+1. Aetna Clinical Policy Bulletins (CPBs) -- BEST FIRST SOURCE
+   - aetna.com/health-care-professionals/clinical-policy-bulletins.html
+   - 900+ policies, consistently structured
+   - Recommended starter policies:
+     * CPB 0852: Continuous Glucose Monitors
+     * CPB 0795: Genetic Testing
+     * CPB 0537: Knee Arthroplasty
+     * CPB 0206: MRI of the Spine
+     * CPB 0285: Infliximab (Remicade)
+
+2. UnitedHealthcare Medical Policies
+   - uhcprovider.com/en/policies-protocols/commercial-policies.html
+
+3. Cigna Coverage Policies
+   - static.cigna.com/assets/chcp/resourceLibrary/coveragePolicies/
+
+4. Anthem / Elevance Health Medical Policies
+   - anthem.com/provider/medical-policies/
+
+CMS MEDICARE DATABASES (FREE, PUBLIC DOMAIN):
+
+1. Medicare Coverage Database (GOLD STANDARD)
+   - cms.gov/medicare-coverage-database
+   - National Coverage Determinations (NCDs): ~300+ national decisions
+   - Local Coverage Determinations (LCDs): thousands of regional decisions
+   - Key NCDs for demo:
+     * NCD 220.6: PET Scans
+     * NCD 150.2: Cochlear Implants
+     * NCD 160.18: TAVR
+     * NCD 90.1: Pharmacogenomic Testing
+
+2. Medicare Fee-for-Service Prior Authorization List
+   - The official list of services requiring PA under Medicare FFS
+
+3. CMS HCPCS/CPT Code Files
+   - Code sets for mapping procedures to auth requirements
+
+SYNTHETIC EHR DATA:
+
+1. Synthea (RECOMMENDED)
+   - github.com/synthetichealth/synthea
+   - Generates realistic FHIR R4 patient bundles
+   - Pre-generated datasets: synthea.mitre.org/downloads
+   - Generate patients with PA-triggering conditions:
+     * Diabetes -> CGM, insulin pump PAs
+     * Cancer -> imaging, chemo, genetic testing PAs
+     * Osteoarthritis -> joint replacement PAs
+     * Heart disease -> cardiac catheterization PAs
+   - Command: ./run_synthea -p 100 -s 12345 Georgia
+
+2. CMS Synthetic Public Use Files (SynPUFs)
+   - Medicare claims synthetic data
+   - More realistic for Medicare-specific scenarios
+
+3. SMART on FHIR Sandbox (LIVE API)
+   - launch.smarthealthit.org
+   - Public FHIR server with synthetic patients
+   - Live API calls during demo = impressive
+
+4. HAPI FHIR Public Server
+   - hapi.fhir.org/baseR4
+   - Free, loaded with test data
+
+DRUG & CODE DATABASES:
+- DailyMed (FDA drug labels): dailymed.nlm.nih.gov
+- USPSTF Recommendations: uspreventiveservicestaskforce.org
+- RxNorm (drug naming): nlm.nih.gov/research/umls/rxnorm/
+- ICD-10-CM: cms.gov/medicare/coding-billing/icd-10-codes
+
+================================================================================
+10. MVP FEATURE PRIORITIZATION
+================================================================================
+
+PRIORITY 1 (Core - Must Have):
+[ ] Supabase schema setup (patients, coverage, document_chunks, PA tables)
+[ ] Clinical PDF upload per patient (parse -> chunk -> embed -> store)
+[ ] Policy PDF upload (parse -> chunk -> embed -> store with payer/CPT metadata)
+[ ] Patient search with autocomplete (name/DOB -> relational lookup)
+[ ] RAG evaluation: search policy chunks + patient clinical chunks -> Claude determination
+[ ] Determination output with probability score + citations to both policy AND clinical docs
+[ ] Missing information detection ("you need HbA1c from past 90 days")
+
+PRIORITY 2 (Demo Polish):
+[ ] Synthea bulk loader (pre-populate patients + convert FHIR data to clinical chunks)
+[ ] Patient dashboard (list uploaded docs, insurance info)
+[ ] Interactive criteria checklist (green/red per criterion)
+[ ] Auto-generated Letter of Medical Necessity
+
+PRIORITY 3 (Sponsor Integration):
+[ ] SafetyKit PHI/PII redaction layer
+[ ] Actian analytics dashboard
+[ ] Sphinx AI integration (per their offering)
+
+PRIORITY 4 (Nice to Have):
+[ ] Multi-payer comparison ("Would Aetna AND UHC approve this?")
+[ ] CPT code search with autocomplete
+[ ] Determination history / audit trail
+[ ] PDF export of determination report
+
+================================================================================
+11. RISK ASSESSMENT
+================================================================================
+
+| Risk                              | Severity | Mitigation                                     |
+|-----------------------------------|----------|-------------------------------------------------|
+| Claude PDF parsing fails on       | Medium   | Fallback to pdf-parse text extraction            |
+| complex policy layouts            |          |                                                 |
+| LLM hallucinations in citations   | High     | Post-generation verification + temperature=0     |
+| Synthea data doesn't match real   | Low      | Pre-generate patients with specific conditions   |
+| PA scenarios well                 |          |                                                 |
+| Token costs exceed budget         | Low      | Use embedding-3-small ($0.02/1M), Claude Sonnet  |
+| FHIR complexity overwhelms team   | Medium   | Use @medplum/fhirtypes, focus on 5-6 resources   |
+| Sponsor APIs unavailable/broken   | Medium   | Build core without sponsors first, integrate last |
+| Demo data not compelling enough   | Medium   | Pre-build 3 demo scenarios with known outcomes    |
+
+================================================================================
+12. COST ESTIMATES
+================================================================================
+
+HACKATHON COSTS (essentially free):
+
+| Service                    | Tier         | Cost         |
+|----------------------------|--------------|--------------|
+| Supabase                   | Free tier    | $0           |
+| Anthropic Claude API       | Pay-per-use  | ~$2-5 total  |
+| OpenAI Embeddings          | Pay-per-use  | ~$0.10 total |
+| Vercel/deployment          | Free tier    | $0           |
+| SafetyKit                  | Sponsor key  | $0           |
+| Synthea                    | Open source  | $0           |
+| TOTAL HACKATHON            |              | ~$2-5        |
+
+MONTHLY COSTS IF CONTINUED AS PORTFOLIO (low usage):
+
+| Service                    | Tier         | Cost/month   |
+|----------------------------|--------------|--------------|
+| Supabase                   | Free tier    | $0           |
+| Anthropic Claude API       | Pay-per-use  | ~$10-30      |
+| OpenAI Embeddings          | Pay-per-use  | ~$1-2        |
+| Vercel                     | Free tier    | $0           |
+| TOTAL PORTFOLIO            |              | ~$11-32/mo   |
+
+================================================================================
+13. NEXT STEPS
+================================================================================
+
+IMMEDIATE ACTIONS:
+1. Check Hacklytics Devpost/Discord for sponsor API keys (especially SafetyKit, Sphinx AI)
+2. Download 10-15 Aetna CPBs for RAG corpus
+3. Download 5-10 CMS NCDs for diversity
+4. Generate Synthea patient data (50-100 patients, Georgia)
+
+NEXT IN WORKFLOW:
+-> Run /vibe-prd to create Product Requirements Document
+-> Run /vibe-techdesign to finalize architecture
+-> Run /vibe-agents to generate build instructions
+-> Run /vibe-build to start implementation
+
+BUILD ORDER (12-16 hours estimated across team):
+1. Scaffold React frontend + Express backend              (1 hour)
+2. Set up Supabase: schema + pgvector + indexes           (30 min)
+3. Document ingestion pipeline (PDF -> Claude parse ->    (2-3 hours)
+   chunk -> embed -> store in document_chunks)
+   Works for BOTH clinical docs and policy docs.
+4. Patient management: create patient, upload clinical    (1-2 hours)
+   PDFs, patient search API + autocomplete UI
+5. Policy upload: admin uploads insurance PDFs            (1 hour, reuses step 3)
+6. RAG evaluation endpoint: search policy + clinical      (2-3 hours)
+   chunks -> Claude determination with citations
+7. Frontend: patient dashboard + determination view       (2-3 hours)
+8. Synthea bulk loader (pre-populate demo data)           (1-2 hours)
+9. Polish: error handling, loading states, demo prep      (1-2 hours)
+
+FIVE DEMO MOMENTS THAT WIN:
+1. The Search: Type "John Smith" -> patient record + uploaded docs appear
+2. The Upload: Doctor uploads clinical notes PDF -> parsed and indexed instantly
+3. The Determination: Select procedure, hit Evaluate -> AI matches in <30 seconds
+4. The Missing Info Catch: "You need HbA1c from past 90 days per Aetna CPB 0852"
+5. The Business Case: "This saved 45 min and $14. At scale: $140K/year savings"
+
+================================================================================
+END OF RESEARCH DOCUMENT
+================================================================================
