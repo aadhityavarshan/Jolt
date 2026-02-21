@@ -44,8 +44,8 @@ For every feature:
 
 **Last Updated:** 2026-02-21
 **Current Phase:** Phase 1 — Foundation
-**Working On:** Not started
-**Recently Completed:** None
+**Working On:** Phase 2 — Upload Pipeline
+**Recently Completed:** Full Phase 1 — schema deployed, 50 CPT codes seeded, Supabase connection verified
 **Blocked By:** None
 
 ---
@@ -53,23 +53,23 @@ For every feature:
 ## Roadmap
 
 ### Phase 1: Foundation
-- [ ] Initialize monorepo structure (`/frontend`, `/backend`)
+- [x] Initialize monorepo structure (`/frontend`, `/backend`)
 - [ ] Setup `frontend` — Vite + React + TypeScript + Tailwind + shadcn/ui
-- [ ] Setup `backend` — Node.js + Express + TypeScript
-- [ ] Configure Supabase client in backend
-- [ ] Deploy Supabase schema (patients, coverage, cpt_codes, document_chunks, prior_auth_requests, determinations)
-- [ ] Deploy `match_chunks` RPC function in Supabase
-- [ ] Create HNSW + GIN indexes
-- [ ] Seed CPT code catalog (~50 common PA procedures)
-- [ ] Configure `.env` files for backend and frontend
-- [ ] Verify Supabase connection works (simple read query)
+- [x] Setup `backend` — Node.js + Express + TypeScript
+- [x] Configure Supabase client in backend
+- [x] Deploy Supabase schema (patients, coverage, cpt_codes, document_chunks, prior_auth_requests, determinations)
+- [x] Deploy `match_chunks` RPC function in Supabase
+- [x] Create HNSW + GIN indexes
+- [x] Seed CPT code catalog (~50 common PA procedures)
+- [x] Configure `.env` files for backend and frontend
+- [x] Verify Supabase connection works (simple read query)
 
 ### Phase 2: Upload Pipeline
-- [ ] `POST /api/upload/clinical` — accept PDF, parse with Claude, chunk, embed, store
-- [ ] `POST /api/upload/policy` — accept PDF + payer/CPT metadata, parse, chunk, embed, store
+- [x] `POST /api/upload/clinical` — accept PDF, parse with Claude, chunk, embed, store
+- [x] `POST /api/upload/policy` — accept PDF + payer/CPT metadata, parse, chunk, embed, store
 - [ ] Frontend: DocumentUpload component with drag-and-drop (clinical and policy tabs)
 - [ ] Frontend: AdminPage for policy management (`/admin`)
-- [ ] End-to-end test: upload a policy PDF → verify chunks appear in Supabase
+- [x] End-to-end test: upload a policy PDF → verify chunks appear in Supabase
 
 ### Phase 3: Patient & CPT Search
 - [ ] `GET /api/patients/search?q=` — autocomplete by name/DOB
