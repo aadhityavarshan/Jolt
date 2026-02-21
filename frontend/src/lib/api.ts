@@ -1,106 +1,125 @@
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+import type {
+  Patient,
+  Procedure,
+  EvaluateRequest,
+  EvaluationResult,
+} from "./types";
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? 'Request failed');
-  }
-  return res.json() as Promise<T>;
-}
+let useMock = true;
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? 'Request failed');
-  }
-  return res.json() as Promise<T>;
-}
+export const isMockMode = () => useMock;
+export const setMockMode = (v: boolean) => { useMock = v; };
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export interface Patient {
-  id: string;
-  first_name: string;
-  last_name: string;
-  dob: string;
-  mrn?: string;
-}
+// ── Mock Data ──────────────────────────────────────────
 
-export interface Coverage {
-  id: string;
-  patient_id: string;
-  payer: string;
-  member_id?: string;
-  plan_name?: string;
-  is_active: boolean;
-}
+const MOCK_PATIENTS: Patient[] = [
+  { id: "p1", name: "Sarah Johnson", dob: "1985-03-14", payer: "Aetna" },
+  { id: "p2", name: "James Martinez", dob: "1972-11-08", payer: "UnitedHealthcare" },
+  { id: "p3", name: "Emily Chen", dob: "1990-07-22", payer: "Blue Cross Blue Shield" },
+  { id: "p4", name: "Robert Williams", dob: "1968-01-30", payer: "Cigna" },
+  { id: "p5", name: "Maria Garcia", dob: "1995-09-05", payer: "Humana" },
+];
 
-export interface PatientDocument {
-  filename: string;
-  record_type: string;
-  date: string | null;
-}
+export const MOCK_PROCEDURES: Procedure[] = [
+  { cptCode: "93306", label: "Echocardiogram", hasLaterality: false },
+  { cptCode: "93458", label: "Cardiac catheterization", hasLaterality: false },
+  { cptCode: "99242", label: "Heart surgery consult", hasLaterality: false },
+  { cptCode: "72141", label: "Cervical spine MRI", hasLaterality: false },
+  { cptCode: "72146", label: "Thoracic spine MRI", hasLaterality: false },
+  { cptCode: "72148", label: "Lumbar spine MRI", hasLaterality: false },
+  { cptCode: "99243", label: "Spinal fusion consult", hasLaterality: false },
+];
 
-export interface PatientDetail {
-  patient: Patient;
-  coverage: Coverage[];
-  documents: PatientDocument[];
-}
-
-export interface CptCode {
-  id: string;
-  code: string;
-  description: string;
-  category: string;
-}
-
-export interface EvaluateTrigger {
-  patient_id: string;
-  cpt_code: string;
-  payer: string;
-}
-
-export interface Determination {
-  id: string;
-  request_id: string;
-  probability_score: number;
-  recommendation: 'LIKELY_APPROVED' | 'LIKELY_DENIED' | 'INSUFFICIENT_INFO';
-  criteria_results: CriterionResult[];
-  missing_info: string[];
-  created_at: string;
-}
-
-export interface CriterionResult {
-  criterion: string;
-  met: boolean;
-  confidence: number;
-  evidence_quote: string | null;
-  clinical_citation: string | null;
-  policy_citation: string;
-  reasoning: string;
-}
-
-// ── API client ─────────────────────────────────────────────────────────────────
-
-export const api = {
-  patients: {
-    search: (q: string) =>
-      get<Patient[]>(`/api/patients/search?q=${encodeURIComponent(q)}`),
-    get: (id: string) => get<PatientDetail>(`/api/patients/${id}`),
-  },
-  cpt: {
-    search: (q: string) =>
-      get<CptCode[]>(`/api/cpt/search?q=${encodeURIComponent(q)}`),
-  },
-  evaluate: {
-    trigger: (body: EvaluateTrigger) =>
-      post<{ determination_id: string }>('/api/evaluate', body),
-    get: (id: string) => get<{ status: string } & Partial<Determination>>(`/api/evaluate/${id}`),
-  },
+const MOCK_RESULT: EvaluationResult = {
+  verdict: "MAYBE",
+  probability: 68,
+  reasons: [
+    "Patient has documented chronic knee pain for over 6 months.",
+    "Conservative treatments (PT, injections) have been partially attempted.",
+    "Imaging confirms moderate osteoarthritis in the target joint.",
+  ],
+  missingInfo: [
+    "Physical therapy completion records (minimum 6 weeks required by payer).",
+    "Updated BMI documentation within the last 90 days.",
+    "Specialist referral letter from primary care physician.",
+  ],
+  evidence: [
+    {
+      text: "Total knee arthroplasty is considered medically necessary when the member has failed at least 3 months of conservative therapy including physical therapy.",
+      source: "Aetna Clinical Policy Bulletin #0016",
+      page: 4,
+    },
+    {
+      text: "Documentation must include radiographic evidence of joint space narrowing, osteophyte formation, or subchondral sclerosis.",
+      source: "Aetna Clinical Policy Bulletin #0016",
+      page: 7,
+    },
+  ],
 };
+
+// ── API Functions ──────────────────────────────────────
+
+export async function searchPatients(query: string): Promise<Patient[]> {
+  if (useMock) {
+    await delay(300);
+    const q = query.toLowerCase();
+    return MOCK_PATIENTS.filter((p) => p.name.toLowerCase().includes(q));
+  }
+  const res = await fetch(`/api/patients?q=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error("Failed to search patients");
+  return res.json();
+}
+
+export async function searchProcedures(query: string): Promise<Procedure[]> {
+  if (useMock) {
+    await delay(200);
+    const q = query.toLowerCase();
+    return MOCK_PROCEDURES.filter(
+      (p) => p.label.toLowerCase().includes(q) || p.cptCode.includes(q)
+    );
+  }
+  const res = await fetch(`/api/procedures?q=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error("Failed to search procedures");
+  return res.json();
+}
+
+export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> {
+  if (useMock) {
+    await delay(1500);
+    return MOCK_RESULT;
+  }
+  const res = await fetch("/api/evaluate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error("Evaluation failed");
+  return res.json();
+}
+
+export async function uploadClinical(patientId: string, file: File): Promise<void> {
+  if (useMock) {
+    await delay(1000);
+    return;
+  }
+  const fd = new FormData();
+  fd.append("patient_id", patientId);
+  fd.append("file", file);
+  const res = await fetch("/api/upload/clinical", { method: "POST", body: fd });
+  if (!res.ok) throw new Error("Upload failed");
+}
+
+export async function uploadPolicy(payer: string, cptCodes: string[], file: File): Promise<void> {
+  if (useMock) {
+    await delay(1000);
+    return;
+  }
+  const fd = new FormData();
+  fd.append("payer", payer);
+  fd.append("cpt_codes", cptCodes.join(","));
+  fd.append("file", file);
+  const res = await fetch("/api/upload/policy", { method: "POST", body: fd });
+  if (!res.ok) throw new Error("Upload failed");
+}

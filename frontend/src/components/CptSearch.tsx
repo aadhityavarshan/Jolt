@@ -1,135 +1,119 @@
-import { useState, useRef, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Search, Tag, ChevronRight, Loader2 } from 'lucide-react';
-import { api, type CptCode } from '../lib/api';
-
-function useDebounce<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
-}
+import { useState, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { searchProcedures, MOCK_PROCEDURES } from "@/lib/api";
+import type { Procedure, Laterality } from "@/lib/types";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Stethoscope } from "lucide-react";
 
 interface Props {
-  value: CptCode | null;
-  onChange: (cpt: CptCode | null) => void;
-  placeholder?: string;
+  selected: Procedure | null;
+  laterality: Laterality;
+  onSelect: (p: Procedure) => void;
+  onLateralityChange: (l: Laterality) => void;
 }
 
-export function CptSearch({ value, onChange, placeholder = 'Search CPT code or procedure…' }: Props) {
-  const [query, setQuery] = useState(value ? `${value.code} — ${value.description}` : '');
+export default function CPTSearch({ selected, laterality, onSelect, onLateralityChange }: Props) {
+  const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const debouncedQuery = useDebounce(query, 200);
+  const ref = useRef<HTMLDivElement>(null);
 
-  // Sync display value when external value changes
-  useEffect(() => {
-    if (value) setQuery(`${value.code} — ${value.description}`);
-  }, [value]);
-
-  const { data: results = [], isFetching } = useQuery({
-    queryKey: ['cpt', 'search', debouncedQuery],
-    queryFn: () => api.cpt.search(debouncedQuery),
-    enabled: debouncedQuery.length >= 1 && open,
-    staleTime: 60_000,
+  const { data: results = [] } = useQuery({
+    queryKey: ["procedures", query],
+    queryFn: () => searchProcedures(query),
+    enabled: query.length >= 2,
   });
 
   useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  function handleSelect(cpt: CptCode) {
-    onChange(cpt);
-    setQuery(`${cpt.code} — ${cpt.description}`);
-    setOpen(false);
-  }
-
-  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setQuery(e.target.value);
-    onChange(null);
-    setOpen(true);
-  }
-
-  function handleClear() {
-    setQuery('');
-    onChange(null);
-    setOpen(false);
-  }
-
-  const showDropdown = open && debouncedQuery.length >= 1;
-
   return (
-    <div ref={containerRef} className="relative w-full">
-      <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">
-        {isFetching ? (
-          <Loader2 className="w-4 h-4 text-slate-400 animate-spin shrink-0" />
-        ) : (
-          <Search className="w-4 h-4 text-slate-400 shrink-0" />
-        )}
-        <input
-          type="text"
-          value={query}
-          onChange={handleInputChange}
-          onFocus={() => setOpen(true)}
-          placeholder={placeholder}
-          className="flex-1 text-sm text-slate-900 placeholder:text-slate-400 outline-none bg-transparent"
-        />
-        {query && (
-          <button
-            onClick={handleClear}
-            className="text-slate-300 hover:text-slate-500 transition-colors text-xs"
-          >
-            ✕
-          </button>
-        )}
-      </div>
-
-      {showDropdown && (
-        <div className="absolute z-50 top-full mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
-          {results.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-slate-400">
-              {isFetching ? 'Searching…' : 'No CPT codes found'}
-            </div>
-          ) : (
-            <ul role="listbox">
-              {results.map((cpt) => (
-                <li key={cpt.id}>
-                  <button
-                    role="option"
-                    aria-selected={value?.id === cpt.id}
-                    onClick={() => handleSelect(cpt)}
-                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center shrink-0">
-                        <Tag className="w-4 h-4 text-emerald-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900 font-mono">{cpt.code}</p>
-                        <p className="text-xs text-slate-500 mt-0.5 max-w-xs truncate">{cpt.description}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                        {cpt.category}
-                      </span>
-                      <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-emerald-500 transition-colors" />
-                    </div>
-                  </button>
-                </li>
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <Stethoscope className="h-4 w-4 text-primary" />
+          Procedure Selection
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* CPT Search */}
+        <div className="relative" ref={ref}>
+          <Input
+            placeholder="Search by CPT code or procedure name..."
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => query.length >= 2 && setOpen(true)}
+          />
+          {open && results.length > 0 && (
+            <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg">
+              {results.map((p) => (
+                <button
+                  key={p.cptCode}
+                  className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors first:rounded-t-md last:rounded-b-md"
+                  onClick={() => {
+                    onSelect(p);
+                    setQuery("");
+                    setOpen(false);
+                  }}
+                >
+                  <span className="font-medium text-sm">{p.label}</span>
+                  <span className="text-xs text-muted-foreground ml-2">CPT {p.cptCode}</span>
+                </button>
               ))}
-            </ul>
+            </div>
           )}
         </div>
-      )}
-    </div>
+
+        {/* Dropdown alternative */}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="shrink-0">or select:</span>
+          <Select
+            value={selected?.cptCode ?? ""}
+            onValueChange={(val) => {
+              const proc = MOCK_PROCEDURES.find((p) => p.cptCode === val);
+              if (proc) onSelect(proc);
+            }}
+          >
+            <SelectTrigger className="flex-1">
+              <SelectValue placeholder="Choose a procedure" />
+            </SelectTrigger>
+            <SelectContent>
+              {MOCK_PROCEDURES.map((p) => (
+                <SelectItem key={p.cptCode} value={p.cptCode}>
+                  {p.label} (CPT {p.cptCode})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Laterality */}
+        {selected?.hasLaterality && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Laterality</p>
+            <ToggleGroup
+              type="single"
+              value={laterality}
+              onValueChange={(v) => v && onLateralityChange(v as Laterality)}
+              className="justify-start"
+            >
+              <ToggleGroupItem value="left" className="text-xs">Left</ToggleGroupItem>
+              <ToggleGroupItem value="right" className="text-xs">Right</ToggleGroupItem>
+              <ToggleGroupItem value="both" className="text-xs">Both</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
