@@ -76,12 +76,6 @@ OPENAI_API_KEY=your_openai_key
 VOYAGE_API_KEY=your_voyage_key
 ```
 
-Start the dev server:
-
-```bash
-npm run dev
-```
-
 The backend will be available at `http://localhost:3001`.
 
 ### Frontend
