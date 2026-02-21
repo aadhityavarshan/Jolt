@@ -6,6 +6,54 @@ import { runEvaluation, generateLetter } from '../services/ragPipeline';
 
 const router = Router();
 
+// GET /api/evaluate — list evaluation runs (most recent first)
+router.get('/', async (_req: Request, res: Response) => {
+  try {
+    const { data: requests, error } = await supabase
+      .from('prior_auth_requests')
+      .select(`
+        id,
+        patient_id,
+        cpt_code,
+        payer,
+        status,
+        created_at,
+        patients(first_name, last_name),
+        determinations(probability_score, recommendation, missing_info, created_at)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+
+    const runs = (requests ?? []).map((row: any) => {
+      const patient = Array.isArray(row.patients) ? row.patients[0] : row.patients;
+      const determination = Array.isArray(row.determinations)
+        ? row.determinations[0]
+        : row.determinations;
+
+      return {
+        determination_id: row.id,
+        patient_id: row.patient_id,
+        patient_name: patient ? `${patient.first_name ?? ''} ${patient.last_name ?? ''}`.trim() : 'Unknown Patient',
+        cpt_code: row.cpt_code,
+        payer: row.payer,
+        status: row.status,
+        requested_at: row.created_at,
+        recommendation: determination?.recommendation ?? null,
+        probability_score: typeof determination?.probability_score === 'number' ? determination.probability_score : null,
+        missing_info_count: Array.isArray(determination?.missing_info) ? determination.missing_info.length : 0,
+        completed_at: determination?.created_at ?? null,
+      };
+    });
+
+    res.json(runs);
+  } catch (err) {
+    console.error('GET /api/evaluate error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/evaluate — trigger a new prior auth evaluation
 router.post('/', async (req: Request, res: Response) => {
   try {
