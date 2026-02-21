@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import uploadRouter from './routes/upload';
+import evaluateRouter from './routes/evaluate';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -18,7 +19,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/upload', uploadRouter);
 // app.use('/api/patients', patientsRouter);
 // app.use('/api/cpt', cptRouter);
-// app.use('/api/evaluate', evaluateRouter);
+app.use('/api/evaluate', evaluateRouter);
 
 app.listen(PORT, () => {
   console.log(`Jolt backend running on http://localhost:${PORT}`);
