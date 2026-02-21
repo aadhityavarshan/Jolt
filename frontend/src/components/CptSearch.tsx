@@ -61,7 +61,7 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
                   className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors first:rounded-t-md last:rounded-b-md"
                   onClick={() => {
                     onSelect(p);
-                    setQuery("");
+                    setQuery(`${p.label} (CPT ${p.cptCode})`);
                     setOpen(false);
                   }}
                 >

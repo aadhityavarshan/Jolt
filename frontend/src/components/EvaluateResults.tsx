@@ -1,9 +1,12 @@
+import { useState } from "react";
 import type { EvaluationResult, Verdict } from "@/lib/types";
+import { downloadLetter } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import EvidenceQuoteCard from "./EvidenceQuoteCard";
-import { CheckCircle2, AlertTriangle, XCircle, FileText, AlertCircle, BookOpen } from "lucide-react";
+import { CheckCircle2, AlertTriangle, XCircle, FileText, AlertCircle, BookOpen, Download, Loader2 } from "lucide-react";
 
 interface Props {
   result: EvaluationResult;
@@ -29,14 +32,49 @@ const verdictConfig: Record<Verdict, { label: string; className: string; icon: R
 
 export default function EvaluateResults({ result }: Props) {
   const v = verdictConfig[result.verdict];
+  const [letterLoading, setLetterLoading] = useState(false);
+  const [letterError, setLetterError] = useState<string | null>(null);
+
+  const handleDownloadLetter = async () => {
+    setLetterLoading(true);
+    setLetterError(null);
+    try {
+      await downloadLetter(result.determinationId);
+    } catch (err) {
+      setLetterError(err instanceof Error ? err.message : "Failed to generate letter");
+    } finally {
+      setLetterLoading(false);
+    }
+  };
 
   return (
     <Card>
       <CardHeader className="pb-4">
-        <CardTitle className="text-base font-semibold flex items-center gap-2">
-          <FileText className="h-4 w-4 text-primary" />
-          Evaluation Results
+        <CardTitle className="text-base font-semibold flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" />
+            Evaluation Results
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadLetter}
+            disabled={letterLoading}
+          >
+            {letterLoading ? (
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating...
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5">
+                <Download className="h-3.5 w-3.5" /> Letter of Necessity
+              </span>
+            )}
+          </Button>
         </CardTitle>
+        {letterError && (
+          <p className="text-sm text-destructive mt-1">{letterError}</p>
+        )}
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Verdict Badge */}

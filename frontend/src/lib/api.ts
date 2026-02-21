@@ -52,6 +52,7 @@ export const MOCK_PROCEDURES: Procedure[] = [
 ];
 
 const MOCK_RESULT: EvaluationResult = {
+  determinationId: "mock-determination-id",
   verdict: "MAYBE",
   probability: 68,
   reasons: [
@@ -182,6 +183,7 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
             : "MAYBE";
 
       return {
+        determinationId: trigger.determination_id,
         verdict,
         probability: Math.round((poll.probability_score ?? 0) * 100),
         reasons:
@@ -241,4 +243,27 @@ export async function uploadPolicy(
   if (!res.ok) {
     throw new Error(await readError(res, "Policy upload failed"));
   }
+}
+
+export async function downloadLetter(determinationId: string): Promise<void> {
+  if (useMock) {
+    await delay(500);
+    alert("Letter download is not available in mock mode.");
+    return;
+  }
+  const res = await fetch(toUrl(`/api/evaluate/${determinationId}/letter`), {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(await readError(res, "Failed to generate letter"));
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Letter_of_Medical_Necessity_${determinationId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
