@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { uploadClinical, uploadPolicy, isMockMode, setMockMode } from "@/lib/api";
 import UploadCard from "@/components/UploadCard";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -10,12 +9,6 @@ import { ArrowLeft } from "lucide-react";
 
 export default function AdminPage() {
   const [mock, setMock] = useState(isMockMode());
-  const [patientId, setPatientId] = useState("");
-  const [recordType, setRecordType] = useState("");
-  const [documentDate, setDocumentDate] = useState("");
-  const [payer, setPayer] = useState("");
-  const [cptCodes, setCptCodes] = useState("");
-  const [policyId, setPolicyId] = useState("");
 
   const toggleMock = (v: boolean) => {
     setMock(v);
@@ -24,7 +17,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
+      <header className="border-b bg-card animate-fade-in">
         <div className="mx-auto max-w-[1100px] px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link to="/">
@@ -48,88 +41,26 @@ export default function AdminPage() {
 
       <main className="mx-auto max-w-[1100px] px-6 py-6 space-y-6">
         {/* Clinical Upload */}
+        <div className="animate-fade-in-up stagger-1">
         <UploadCard
           title="Upload Clinical Document"
-          description="Upload clinical records (lab reports, notes, imaging)."
-          fields={
-            <div className="grid gap-3">
-              <div className="grid gap-1.5">
-                <Label htmlFor="patient_id">Patient ID</Label>
-                <Input
-                  id="patient_id"
-                  placeholder="UUID from patients table"
-                  value={patientId}
-                  onChange={(e) => setPatientId(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="record_type">Record Type</Label>
-                <Input
-                  id="record_type"
-                  placeholder="e.g. Progress Note"
-                  value={recordType}
-                  onChange={(e) => setRecordType(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="document_date">Document Date</Label>
-                <Input
-                  id="document_date"
-                  type="date"
-                  value={documentDate}
-                  onChange={(e) => setDocumentDate(e.target.value)}
-                />
-              </div>
-            </div>
-          }
+          description="Upload clinical records (lab reports, notes, imaging). Patient and metadata will be extracted automatically."
           onUpload={async (file) => {
-            await uploadClinical(patientId, recordType, documentDate, file);
+            await uploadClinical(file);
           }}
         />
+        </div>
 
         {/* Policy Upload */}
+        <div className="animate-fade-in-up stagger-2">
         <UploadCard
           title="Upload Policy Document"
-          description="Upload payer policy documents."
-          fields={
-            <div className="grid gap-3">
-              <div className="grid gap-1.5">
-                <Label htmlFor="payer">Payer</Label>
-                <Input
-                  id="payer"
-                  placeholder="e.g. Aetna"
-                  value={payer}
-                  onChange={(e) => setPayer(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="cpt_codes">CPT Codes</Label>
-                <Input
-                  id="cpt_codes"
-                  placeholder="Comma-separated (e.g. 27447,27130)"
-                  value={cptCodes}
-                  onChange={(e) => setCptCodes(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="policy_id">Policy ID</Label>
-                <Input
-                  id="policy_id"
-                  placeholder="e.g. CPB-0852"
-                  value={policyId}
-                  onChange={(e) => setPolicyId(e.target.value)}
-                />
-              </div>
-            </div>
-          }
+          description="Upload payer policy documents. Payer, CPT codes, and policy ID will be extracted automatically."
           onUpload={async (file) => {
-            const parsedCptCodes = cptCodes
-              .split(",")
-              .map((code) => code.trim())
-              .filter(Boolean);
-            await uploadPolicy(payer, parsedCptCodes, policyId, file);
+            await uploadPolicy(file);
           }}
         />
+        </div>
       </main>
     </div>
   );

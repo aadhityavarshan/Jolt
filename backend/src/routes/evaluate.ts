@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import PDFDocument from 'pdfkit';
 import { supabase } from '../db/supabase';
-import { runEvaluation } from '../services/ragPipeline';
+import { runEvaluation, generateLetter } from '../services/ragPipeline';
 
 const router = Router();
 
@@ -84,6 +85,67 @@ router.get('/:id', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('GET /api/evaluate/:id error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/evaluate/:id/letter — generate Letter of Medical Necessity as PDF
+router.post('/:id/letter', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+
+    // Verify the evaluation is complete
+    const { data: request, error: reqError } = await supabase
+      .from('prior_auth_requests')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (reqError || !request) {
+      return res.status(404).json({ error: 'Evaluation not found' });
+    }
+
+    if (request.status !== 'complete') {
+      return res.status(400).json({ error: 'Evaluation is not yet complete' });
+    }
+
+    // Generate the letter text via Claude
+    const letterText = await generateLetter(id);
+
+    // Build PDF
+    const doc = new PDFDocument({ margin: 72, size: 'LETTER' });
+    const chunks: Buffer[] = [];
+
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+
+    const pdfReady = new Promise<Buffer>((resolve, reject) => {
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+    });
+
+    doc.font('Helvetica').fontSize(11);
+
+    // Write letter text line by line, preserving blank-line paragraph breaks
+    const lines = letterText.split('\n');
+    for (const line of lines) {
+      if (line.trim() === '') {
+        doc.moveDown(0.5);
+      } else {
+        doc.text(line, { align: 'left', lineGap: 2 });
+      }
+    }
+
+    doc.end();
+    const pdfBuffer = await pdfReady;
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="Letter_of_Medical_Necessity_${id}.pdf"`,
+      'Content-Length': pdfBuffer.length.toString(),
+    });
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('POST /api/evaluate/:id/letter error:', err);
+    res.status(500).json({ error: 'Failed to generate letter' });
   }
 });
 

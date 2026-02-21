@@ -34,7 +34,7 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
   }, []);
 
   return (
-    <Card>
+    <Card className="card-hover">
       <CardHeader className="pb-3">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <Stethoscope className="h-4 w-4 text-primary" />
@@ -54,14 +54,14 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
             onFocus={() => query.length >= 2 && setOpen(true)}
           />
           {open && results.length > 0 && (
-            <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg">
+            <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg animate-slide-down">
               {results.map((p) => (
                 <button
                   key={p.cptCode}
                   className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors first:rounded-t-md last:rounded-b-md"
                   onClick={() => {
                     onSelect(p);
-                    setQuery("");
+                    setQuery(`${p.label} (CPT ${p.cptCode})`);
                     setOpen(false);
                   }}
                 >
@@ -75,7 +75,7 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
 
         {/* Laterality */}
         {selected?.hasLaterality && (
-          <div className="space-y-2">
+          <div className="space-y-2 animate-fade-in">
             <p className="text-sm font-medium">Laterality</p>
             <ToggleGroup
               type="single"

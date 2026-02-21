@@ -34,14 +34,14 @@ export default function PatientSearch({ selected, onSelect, onClear }: Props) {
 
   if (selected) {
     return (
-      <Card>
+      <Card className="card-hover">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <User className="h-4 w-4 text-primary" />
             Patient Selected
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="animate-scale-in">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <p className="font-medium">{selected.name}</p>
@@ -50,7 +50,7 @@ export default function PatientSearch({ selected, onSelect, onClear }: Props) {
             </div>
             <button
               onClick={onClear}
-              className="rounded-full p-1.5 hover:bg-muted transition-colors"
+              className="rounded-full p-1.5 hover:bg-muted transition-colors hover:rotate-90 transition-transform duration-200"
               aria-label="Clear selection"
             >
               <X className="h-4 w-4 text-muted-foreground" />
@@ -62,7 +62,7 @@ export default function PatientSearch({ selected, onSelect, onClear }: Props) {
   }
 
   return (
-    <Card>
+    <Card className="card-hover">
       <CardHeader className="pb-3">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <User className="h-4 w-4 text-primary" />
@@ -83,7 +83,7 @@ export default function PatientSearch({ selected, onSelect, onClear }: Props) {
             className="pl-9"
           />
           {open && results.length > 0 && (
-            <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg">
+            <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg animate-slide-down">
               {results.map((p) => (
                 <button
                   key={p.id}

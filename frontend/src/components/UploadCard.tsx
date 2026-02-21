@@ -8,7 +8,7 @@ import FileDropzone from "@/components/FileDropzone";
 interface Props {
   title: string;
   description: string;
-  fields: React.ReactNode;
+  fields?: React.ReactNode;
   onUpload: (file: File) => Promise<void>;
 }
 
@@ -55,7 +55,7 @@ export default function UploadCard({ title, description, fields, onUpload }: Pro
         <p className="text-sm text-muted-foreground">{description}</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {fields}
+        {fields && fields}
 
         <FileDropzone
           file={file}

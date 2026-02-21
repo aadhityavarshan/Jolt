@@ -52,6 +52,7 @@ export const MOCK_PROCEDURES: Procedure[] = [
 ];
 
 const MOCK_RESULT: EvaluationResult = {
+  determinationId: "mock-determination-id",
   verdict: "MAYBE",
   probability: 68,
   reasons: [
@@ -182,6 +183,7 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
             : "MAYBE";
 
       return {
+        determinationId: trigger.determination_id,
         verdict,
         probability: Math.round((poll.probability_score ?? 0) * 100),
         reasons:
@@ -192,7 +194,7 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
             ?.filter((c) => c.evidence_quote)
             .map((c) => ({
               text: c.evidence_quote as string,
-              source: c.policy_citation || c.clinical_citation || "Clinical records",
+              source: c.clinical_citation || c.policy_citation || "Clinical records",
             })) ?? [],
       };
     }
@@ -201,20 +203,12 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
   throw new Error("Evaluation timed out after 35 seconds");
 }
 
-export async function uploadClinical(
-  patientId: string,
-  recordType: string,
-  date: string,
-  file: File
-): Promise<void> {
+export async function uploadClinical(file: File): Promise<void> {
   if (useMock) {
     await delay(1000);
     return;
   }
   const fd = new FormData();
-  fd.append("patient_id", patientId);
-  fd.append("record_type", recordType);
-  fd.append("date", date);
   fd.append("file", file);
   const res = await fetch(toUrl("/api/upload/clinical"), { method: "POST", body: fd });
   if (!res.ok) {
@@ -222,23 +216,38 @@ export async function uploadClinical(
   }
 }
 
-export async function uploadPolicy(
-  payer: string,
-  cptCodes: string[],
-  policyId: string,
-  file: File
-): Promise<void> {
+export async function uploadPolicy(file: File): Promise<void> {
   if (useMock) {
     await delay(1000);
     return;
   }
   const fd = new FormData();
-  fd.append("payer", payer);
-  fd.append("cpt_codes", cptCodes.join(","));
-  fd.append("policy_id", policyId);
   fd.append("file", file);
   const res = await fetch(toUrl("/api/upload/policy"), { method: "POST", body: fd });
   if (!res.ok) {
     throw new Error(await readError(res, "Policy upload failed"));
   }
+}
+
+export async function downloadLetter(determinationId: string): Promise<void> {
+  if (useMock) {
+    await delay(500);
+    alert("Letter download is not available in mock mode.");
+    return;
+  }
+  const res = await fetch(toUrl(`/api/evaluate/${determinationId}/letter`), {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(await readError(res, "Failed to generate letter"));
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Letter_of_Medical_Necessity_${determinationId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

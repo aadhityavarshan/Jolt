@@ -22,6 +22,7 @@ export interface EvidenceQuote {
 }
 
 export interface EvaluationResult {
+  determinationId: string;
   verdict: Verdict;
   probability: number;
   reasons: string[];
