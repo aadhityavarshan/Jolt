@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import uploadRouter from './routes/upload';
 import evaluateRouter from './routes/evaluate';
+import patientsRouter from './routes/patients';
+import cptRouter from './routes/cpt';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -17,8 +19,8 @@ app.get('/api/health', (_req, res) => {
 
 // Routes
 app.use('/api/upload', uploadRouter);
-// app.use('/api/patients', patientsRouter);
-// app.use('/api/cpt', cptRouter);
+app.use('/api/patients', patientsRouter);
+app.use('/api/cpt', cptRouter);
 app.use('/api/evaluate', evaluateRouter);
 
 app.listen(PORT, () => {
