@@ -78,14 +78,14 @@ export default function EvaluateResults({ result }: Props) {
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Verdict Badge */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 animate-fade-in-up stagger-1">
           <Badge className={v.className}>
             <span className="flex items-center gap-1.5">{v.icon} {v.label}</span>
           </Badge>
         </div>
 
         {/* Probability */}
-        <div className="space-y-2">
+        <div className="space-y-2 animate-fade-in-up stagger-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Approval Probability</span>
             <span className="font-semibold">{result.probability}%</span>
@@ -94,7 +94,7 @@ export default function EvaluateResults({ result }: Props) {
         </div>
 
         {/* Why */}
-        <div className="space-y-2">
+        <div className="space-y-2 animate-fade-in-up stagger-3">
           <h4 className="text-sm font-semibold flex items-center gap-1.5">
             <AlertCircle className="h-3.5 w-3.5 text-primary" /> Why
           </h4>
@@ -107,7 +107,7 @@ export default function EvaluateResults({ result }: Props) {
 
         {/* Missing Info */}
         {result.missingInfo.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-2 animate-fade-in-up stagger-4">
             <h4 className="text-sm font-semibold flex items-center gap-1.5">
               <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Missing Information
             </h4>
@@ -121,7 +121,7 @@ export default function EvaluateResults({ result }: Props) {
 
         {/* Evidence */}
         {result.evidence.length > 0 && (
-          <div className="space-y-3">
+          <div className="space-y-3 animate-fade-in-up stagger-5">
             <h4 className="text-sm font-semibold flex items-center gap-1.5">
               <BookOpen className="h-3.5 w-3.5 text-primary" /> Evidence
             </h4>

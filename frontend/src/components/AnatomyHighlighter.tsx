@@ -43,7 +43,7 @@ export default function AnatomyHighlighter({ procedureLabel }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+        <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1 animate-float">
           {/* Skeleton */}
           <div className="relative flex flex-col items-center">
             <p className="text-xs font-medium text-muted-foreground mb-2">Skeletal</p>

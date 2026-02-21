@@ -44,7 +44,7 @@ export default function MainPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card">
+      <header className="border-b bg-card animate-fade-in">
         <div className="mx-auto max-w-[1100px] px-6 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold tracking-tight">Jolt
@@ -73,23 +73,25 @@ export default function MainPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left column: inputs */}
           <div className="space-y-6">
+            <div className="animate-fade-in-up stagger-1">
             <PatientSearch
               selected={patient}
               onSelect={(p) => {setPatient(p);setResult(null);}}
               onClear={() => {setPatient(null);setResult(null);}} />
+            </div>
 
-
+            <div className="animate-fade-in-up stagger-2">
             <CPTSearch
               selected={procedure}
               laterality={laterality}
               onSelect={(p) => {setProcedure(p);setResult(null);}}
               onLateralityChange={setLaterality} />
-
+            </div>
 
             <Button
               onClick={handleEvaluate}
               disabled={!canEvaluate || mutation.isPending}
-              className="w-full h-11"
+              className="w-full h-11 animate-fade-in-up stagger-3 transition-all duration-200 hover:shadow-lg hover:shadow-primary/25 active:scale-[0.98]"
               size="lg">
 
               {mutation.isPending ?
@@ -109,7 +111,7 @@ export default function MainPage() {
           </div>
 
           {/* Right column: anatomy */}
-          <div>
+          <div className="animate-fade-in-up stagger-2">
             <AnatomyHighlighter
               procedureLabel={procedure?.label ?? null} />
 
@@ -118,7 +120,7 @@ export default function MainPage() {
 
         {/* Results */}
         {result &&
-        <div className="mt-6">
+        <div className="mt-6 animate-scale-in">
             <EvaluateResults result={result} />
           </div>
         }

@@ -44,7 +44,7 @@ export default function FileDropzone({ file, onFileChange, accept = ".pdf,.txt",
 
   if (file) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3 animate-fade-in">
         <File className="h-5 w-5 shrink-0 text-primary" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">{file.name}</p>
@@ -75,14 +75,14 @@ export default function FileDropzone({ file, onFileChange, accept = ".pdf,.txt",
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         className={cn(
-          "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 text-center transition-colors",
+          "group flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 text-center transition-all duration-300",
           dragOver
             ? "border-primary bg-primary/5"
             : "border-border hover:border-primary/50 hover:bg-muted/30",
           disabled && "pointer-events-none opacity-50"
         )}
       >
-        <Upload className="h-8 w-8 text-muted-foreground" />
+        <Upload className="h-8 w-8 text-muted-foreground transition-transform duration-200 group-hover:scale-110" />
         <div>
           <p className="text-sm font-medium text-foreground">
             Drop file here or <span className="text-primary">browse</span>
