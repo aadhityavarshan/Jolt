@@ -192,7 +192,7 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
             ?.filter((c) => c.evidence_quote)
             .map((c) => ({
               text: c.evidence_quote as string,
-              source: c.policy_citation || c.clinical_citation || "Clinical records",
+              source: c.clinical_citation || c.policy_citation || "Clinical records",
             })) ?? [],
       };
     }
