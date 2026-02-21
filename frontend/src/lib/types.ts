@@ -37,11 +37,14 @@ export interface EvaluateRequest {
 
 export interface UploadClinicalRequest {
   patient_id: string;
+  record_type: string;
+  date: string;
   file: File;
 }
 
 export interface UploadPolicyRequest {
   payer: string;
   cpt_codes: string[];
+  policy_id: string;
   file: File;
 }

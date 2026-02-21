@@ -13,7 +13,9 @@ router.get('/search', async (req, res) => {
     const trimmed = q.trim();
     const parts = trimmed.split(/\s+/);
 
-    let query = supabase.from('patients').select('id, first_name, last_name, dob, mrn');
+    let query = supabase
+      .from('patients')
+      .select('id, first_name, last_name, dob, mrn, coverage(payer, is_active)');
 
     if (parts.length >= 2) {
       // "John Smith" — match first name AND last name
@@ -35,7 +37,22 @@ router.get('/search', async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
-    res.json(data ?? []);
+    const mapped = (data ?? []).map((row) => {
+      const coverageRows = (
+        (row as { coverage?: Array<{ payer: string; is_active: boolean }> }).coverage ?? []
+      ).filter((c) => c.is_active);
+
+      return {
+        id: row.id,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        dob: row.dob,
+        mrn: row.mrn,
+        payer: coverageRows[0]?.payer ?? null,
+      };
+    });
+
+    res.json(mapped);
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: 'Query must be at least 1 character' });

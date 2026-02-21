@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { searchProcedures, MOCK_PROCEDURES } from "@/lib/api";
+import { searchProcedures } from "@/lib/api";
 import type { Procedure, Laterality } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Stethoscope } from "lucide-react";
 
@@ -72,29 +71,6 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
               ))}
             </div>
           )}
-        </div>
-
-        {/* Dropdown alternative */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="shrink-0">or select:</span>
-          <Select
-            value={selected?.cptCode ?? ""}
-            onValueChange={(val) => {
-              const proc = MOCK_PROCEDURES.find((p) => p.cptCode === val);
-              if (proc) onSelect(proc);
-            }}
-          >
-            <SelectTrigger className="flex-1">
-              <SelectValue placeholder="Choose a procedure" />
-            </SelectTrigger>
-            <SelectContent>
-              {MOCK_PROCEDURES.map((p) => (
-                <SelectItem key={p.cptCode} value={p.cptCode}>
-                  {p.label} (CPT {p.cptCode})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         {/* Laterality */}
