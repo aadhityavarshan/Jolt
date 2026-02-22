@@ -22,7 +22,7 @@ export default function AdminPage() {
         <div className="animate-fade-in-up stagger-1">
         <UploadCard
           title="Upload Clinical Document"
-          description="Upload clinical records (lab reports, notes, imaging). Patient and metadata will be extracted automatically."
+          description="Upload clinical records (PDF/TXT) or photos/scans (including handwriting). Text and metadata will be extracted automatically."
           onUpload={async (file) => {
             await uploadClinical(file);
           }}
@@ -33,7 +33,7 @@ export default function AdminPage() {
         <div className="animate-fade-in-up stagger-2">
         <UploadCard
           title="Upload Policy Document"
-          description="Upload payer policy documents. Payer, CPT codes, and policy ID will be extracted automatically."
+          description="Upload policy docs as PDF/TXT or photos/scans. OCR text extraction runs before payer/CPT/policy metadata parsing."
           onUpload={async (file) => {
             await uploadPolicy(file);
           }}
