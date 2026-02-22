@@ -3,3 +3,5 @@ node_modules/
 dist/
 .env
 *.env.local
+ref/95bce4f5a39f42c26d50803726a3836e.jpg
+ref/ui.jpg
