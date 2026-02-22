@@ -305,6 +305,27 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
   throw new Error("Evaluation timed out after 35 seconds");
 }
 
+export async function getDocumentContent(
+  patientId: string,
+  filename: string,
+): Promise<{ filename: string; content: string; record_type: string; date: string | null }> {
+  if (useMock) {
+    await delay(300);
+    return {
+      filename,
+      content: `Mock clinical document content for ${filename}.\n\nPatient shows signs of improvement following the prescribed treatment plan. Vitals are within normal range. Follow-up appointment scheduled in 4 weeks.\n\nAll lab results reviewed and within acceptable limits.`,
+      record_type: filename.includes("imaging") ? "Imaging" : "Progress Note",
+      date: "2026-02-10",
+    };
+  }
+
+  const res = await fetch(toUrl(`/api/patients/${patientId}/documents/${encodeURIComponent(filename)}`));
+  if (!res.ok) {
+    throw new Error(await readError(res, "Failed to fetch document content"));
+  }
+  return res.json() as Promise<{ filename: string; content: string; record_type: string; date: string | null }>;
+}
+
 export async function uploadClinical(file: File): Promise<void> {
   if (useMock) {
     await delay(1000);
