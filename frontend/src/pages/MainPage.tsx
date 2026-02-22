@@ -212,7 +212,7 @@ export default function MainPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
+      <header className="border-b bg-card animate-fade-in">
         <div className="mx-auto max-w-[1100px] px-6 py-4 flex items-center gap-4">
           <div className="flex items-center gap-3">
             <SidebarTrigger />
@@ -241,7 +241,7 @@ export default function MainPage() {
         {selectedPatientId ? (
           <>
             {selectedPatient && (
-              <Card>
+              <Card className="animate-fade-in-up stagger-1">
                 <CardContent className="pt-6 flex flex-wrap items-center gap-2">
                   <Badge variant="secondary">Patient: {selectedPatient.name}</Badge>
                   <Badge variant="secondary">DOB: {formatDate(selectedPatient.dob)}</Badge>
@@ -267,7 +267,7 @@ export default function MainPage() {
               </Card>
             ) : profile ? (
               <>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in-up stagger-2">
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -305,7 +305,7 @@ export default function MainPage() {
                   </Card>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in-up stagger-3 relative z-10 overflow-visible">
                   <CPTSearch
                     selected={procedure}
                     laterality={laterality}
@@ -359,7 +359,7 @@ export default function MainPage() {
                   </Card>
                 </div>
 
-                <Card>
+                <Card className="animate-fade-in-up stagger-4">
                   <CardHeader>
                     <CardTitle className="text-base font-semibold flex items-center gap-2">
                       <Clock3 className="h-4 w-4 text-primary" />
@@ -404,7 +404,7 @@ export default function MainPage() {
 
             {profile && (
               <>
-                <Card>
+                <Card className="animate-fade-in-up stagger-5">
                   <CardHeader>
                     <CardTitle className="text-base font-semibold flex items-center gap-2">
                       <FileText className="h-4 w-4 text-primary" />
@@ -458,7 +458,7 @@ export default function MainPage() {
             )}
           </>
         ) : (
-          <Card>
+          <Card className="animate-fade-in-up stagger-1">
             <CardHeader>
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <Clock3 className="h-4 w-4 text-primary" />
