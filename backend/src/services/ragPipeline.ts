@@ -52,12 +52,12 @@ export async function extractPolicyCriteria(
 
   // Fallback: if no payer-specific policy found, use any available policy for this CPT code
   if (policyChunks.length === 0) {
-    console.log(`[ragPipeline] No policy found for payer=${payer}, falling back to any available policy for CPT ${cptCode}`);
+    console.log(`[ragPipeline] No policy found for payer=${payer}, falling back to CPT-specific policy for ${cptCode}`);
     policyChunks = await searchChunks(
       `${cptCode} prior authorization medical necessity criteria requirements`,
-      { type: 'policy' },
+      { type: 'policy', cpt_codes: [cptCode] },
       10,
-      0.25
+      0.1
     );
   }
 
