@@ -169,3 +169,12 @@
   transform: translateY(-2px);
   box-shadow: 0 4px 12px hsl(0 0% 0% / 0.08);
 }
+
+/* ─── Landing page: bolt flash ─── */
+@keyframes bolt-flash {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  20% { opacity: 0.3; }
+  30% { opacity: 0.9; }
+  100% { opacity: 0; }
+}

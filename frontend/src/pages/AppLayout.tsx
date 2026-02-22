@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { label: "Pre-Check", href: "/", icon: FileSearch },
+  { label: "Pre-Check", href: "/app", icon: FileSearch },
   { label: "Uploads", href: "/admin", icon: FileUp },
   { label: "Results", href: "/results", icon: FileCheck2 },
 ];
@@ -28,10 +28,10 @@ export default function AppLayout() {
     <SidebarProvider>
       <Sidebar collapsible="icon" variant="inset">
         <SidebarHeader>
-          <div className="flex items-center gap-2 px-2 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+          <Link to="/" className="flex items-center gap-2 px-2 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
             <img src="/jolt-logo.jpg.png" alt="Jolt" className="h-16 w-16 rounded-md group-data-[collapsible=icon]:hidden" />
             <span className="font-semibold text-sm group-data-[collapsible=icon]:hidden">Jolt</span>
-          </div>
+          </Link>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
