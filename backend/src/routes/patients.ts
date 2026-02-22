@@ -118,6 +118,39 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// GET /api/patients/:id/documents/:filename/pdf - proxy original PDF from storage
+router.get('/:id/documents/:filename/pdf', async (req, res) => {
+  try {
+    const { id, filename } = req.params;
+
+    const { data: doc, error: docErr } = await supabase
+      .from('documents')
+      .select('storage_path')
+      .eq('patient_id', id)
+      .eq('filename', filename)
+      .single();
+
+    if (docErr || !doc) {
+      return res.status(404).json({ error: 'PDF not found in storage' });
+    }
+
+    const { data: fileData, error: dlErr } = await supabase.storage
+      .from('documents')
+      .download(doc.storage_path);
+
+    if (dlErr || !fileData) {
+      return res.status(404).json({ error: 'Failed to download PDF from storage' });
+    }
+
+    const buffer = Buffer.from(await fileData.arrayBuffer());
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.send(buffer);
+  } catch {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/patients/:id/documents/:filename - full text of a clinical document
 router.get('/:id/documents/:filename', async (req, res) => {
   try {

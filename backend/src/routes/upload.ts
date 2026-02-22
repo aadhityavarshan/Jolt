@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import multer from 'multer';
 import { supabase } from '../db/supabase';
 import { isSupportedUploadMimeType, parseUploadedDocumentBuffer } from '../services/pdfParser';
@@ -58,6 +59,28 @@ router.post('/clinical', upload.single('file'), async (req: Request, res: Respon
     console.log(`[upload/clinical] Storing ${rows.length} chunks in Supabase...`);
     const { error } = await supabase.from('document_chunks').insert(rows);
     if (error) throw error;
+
+    // Store original PDF in Supabase Storage
+    if (req.file.mimetype === 'application/pdf') {
+      const storagePath = `clinical/${randomUUID()}-${filename}`;
+      console.log(`[upload/clinical] Uploading original PDF to storage: ${storagePath}`);
+      const { error: storageErr } = await supabase.storage
+        .from('documents')
+        .upload(storagePath, req.file.buffer, { contentType: 'application/pdf' });
+      if (storageErr) {
+        console.error(`[upload/clinical] Storage upload failed (non-fatal):`, storageErr);
+      } else {
+        const { error: docErr } = await supabase.from('documents').insert({
+          patient_id,
+          doc_type: 'clinical',
+          filename,
+          storage_path: storagePath,
+          record_type,
+          date: date || null,
+        });
+        if (docErr) console.error(`[upload/clinical] documents insert failed (non-fatal):`, docErr);
+      }
+    }
 
     console.log(`[upload/clinical] Done: ${filename} → ${rows.length} chunks`);
     res.json({
@@ -125,6 +148,27 @@ router.post('/policy', upload.single('file'), async (req: Request, res: Response
     console.log(`[upload/policy] Storing ${rows.length} chunks in Supabase...`);
     const { error } = await supabase.from('document_chunks').insert(rows);
     if (error) throw error;
+
+    // Store original PDF in Supabase Storage
+    if (req.file.mimetype === 'application/pdf') {
+      const storagePath = `policy/${randomUUID()}-${filename}`;
+      console.log(`[upload/policy] Uploading original PDF to storage: ${storagePath}`);
+      const { error: storageErr } = await supabase.storage
+        .from('documents')
+        .upload(storagePath, req.file.buffer, { contentType: 'application/pdf' });
+      if (storageErr) {
+        console.error(`[upload/policy] Storage upload failed (non-fatal):`, storageErr);
+      } else {
+        const { error: docErr } = await supabase.from('documents').insert({
+          doc_type: 'policy',
+          filename,
+          storage_path: storagePath,
+          payer,
+          policy_id,
+        });
+        if (docErr) console.error(`[upload/policy] documents insert failed (non-fatal):`, docErr);
+      }
+    }
 
     console.log(`[upload/policy] Done: ${filename} → ${rows.length} chunks`);
     res.json({

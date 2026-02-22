@@ -1,4 +1,5 @@
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { useState } from "react";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { FileCheck2, FileSearch, FileUp } from "lucide-react";
 
 import {
@@ -23,6 +24,16 @@ const navItems = [
 
 export default function AppLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [outletKey, setOutletKey] = useState(0);
+
+  const handleNavClick = (e: React.MouseEvent, href: string) => {
+    if (location.pathname === href) {
+      e.preventDefault();
+      setOutletKey((k) => k + 1);
+      navigate(href);
+    }
+  };
 
   return (
     <SidebarProvider>
@@ -43,7 +54,7 @@ export default function AppLayout() {
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton asChild isActive={location.pathname === item.href} tooltip={item.label}>
-                        <Link to={item.href}>
+                        <Link to={item.href} onClick={(e) => handleNavClick(e, item.href)}>
                           <Icon />
                           <span>{item.label}</span>
                         </Link>
@@ -58,7 +69,7 @@ export default function AppLayout() {
       </Sidebar>
 
       <SidebarInset className="bg-background">
-        <Outlet />
+        <Outlet key={outletKey} />
       </SidebarInset>
     </SidebarProvider>
   );

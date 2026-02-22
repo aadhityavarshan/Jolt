@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { evaluate, getAllPatients, getDocumentContent, getEvaluationRuns, getPatientProfile } from "@/lib/api";
+import { evaluate, getAllPatients, getDocumentContent, getDocumentPdfUrl, getEvaluationRuns, getPatientProfile } from "@/lib/api";
 import type { Laterality, Patient, PatientDocument, Procedure } from "@/lib/types";
 import CPTSearch from "@/components/CptSearch";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,7 @@ export default function MainPage() {
   const [procedure, setProcedure] = useState<Procedure | null>(null);
   const [laterality, setLaterality] = useState<Laterality>("both");
   const [selectedDoc, setSelectedDoc] = useState<PatientDocument | null>(null);
+  const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
 
   const {
     data: patients = [],
@@ -62,7 +63,6 @@ export default function MainPage() {
   } = useQuery({
     queryKey: ["evaluation-runs"],
     queryFn: getEvaluationRuns,
-    enabled: Boolean(selectedPatientId),
   });
 
   const evaluationPatient = useMemo<Patient | null>(() => {
@@ -101,6 +101,18 @@ export default function MainPage() {
     enabled: Boolean(selectedPatientId && selectedDoc),
   });
 
+  // Check if a native PDF is available in storage for the selected document
+  useEffect(() => {
+    if (!selectedPatientId || !selectedDoc) {
+      setPdfAvailable(null);
+      return;
+    }
+    const url = getDocumentPdfUrl(selectedPatientId, selectedDoc.filename);
+    fetch(url, { method: "HEAD" })
+      .then((res) => setPdfAvailable(res.ok))
+      .catch(() => setPdfAvailable(false));
+  }, [selectedPatientId, selectedDoc]);
+
   const dedupedDocuments = useMemo(() => {
     if (!profile) return [];
     const seen = new Set<string>();
@@ -133,21 +145,53 @@ export default function MainPage() {
     return Array.from(unique).sort((a, b) => a.localeCompare(b));
   }, [patients]);
 
+  // Build a map of patientId → most recent evaluation timestamp
+  const lastEvalAt = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const run of runs) {
+      const t = new Date(run.requestedAt).getTime();
+      if (!Number.isNaN(t)) {
+        const existing = map.get(run.patientId);
+        if (existing === undefined || t > existing) map.set(run.patientId, t);
+      }
+    }
+    return map;
+  }, [runs]);
+
   const filteredPatients = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return patients.filter((patient) => {
-      const matchesSearch =
-        normalizedSearch.length === 0 ||
-        patient.name.toLowerCase().includes(normalizedSearch) ||
-        patient.id.toLowerCase().includes(normalizedSearch) ||
-        patient.dob.toLowerCase().includes(normalizedSearch);
+    return patients
+      .filter((patient) => {
+        const matchesSearch =
+          normalizedSearch.length === 0 ||
+          patient.name.toLowerCase().includes(normalizedSearch) ||
+          patient.id.toLowerCase().includes(normalizedSearch) ||
+          patient.dob.toLowerCase().includes(normalizedSearch);
 
-      const matchesPayer = payerFilter === "all" || patient.payer === payerFilter;
+        const matchesPayer = payerFilter === "all" || patient.payer === payerFilter;
 
-      return matchesSearch && matchesPayer;
-    });
-  }, [patients, payerFilter, searchTerm]);
+        return matchesSearch && matchesPayer;
+      })
+      .sort((a, b) => {
+        const aTime = lastEvalAt.get(a.id) ?? 0;
+        const bTime = lastEvalAt.get(b.id) ?? 0;
+        if (bTime !== aTime) return bTime - aTime;
+        return a.name.localeCompare(b.name);
+      });
+  }, [patients, payerFilter, searchTerm, lastEvalAt]);
+
+  const relativeTime = (ts: number) => {
+    const diff = Date.now() - ts;
+    const mins = Math.floor(diff / 60_000);
+    const hours = Math.floor(diff / 3_600_000);
+    const days = Math.floor(diff / 86_400_000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 30) return `${days}d ago`;
+    return new Date(ts).toLocaleDateString();
+  };
 
   const formatDate = (value: string | null | undefined) => {
     if (!value) return "-";
@@ -401,25 +445,41 @@ export default function MainPage() {
                 </Card>
 
                 <Sheet open={Boolean(selectedDoc)} onOpenChange={(open) => { if (!open) setSelectedDoc(null); }}>
-                  <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+                  <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
                     <SheetHeader className="mb-4">
                       <SheetTitle className="break-all">{selectedDoc?.filename}</SheetTitle>
                       <SheetDescription>
                         {selectedDoc?.record_type} &mdash; {formatDate(selectedDoc?.date ?? null)}
                       </SheetDescription>
                     </SheetHeader>
-                    {isDocLoading && (
+                    {pdfAvailable === null && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" /> Loading document...
                       </div>
                     )}
-                    {isDocError && (
-                      <p className="text-sm text-destructive">Failed to load document content.</p>
+                    {pdfAvailable && selectedPatientId && selectedDoc && (
+                      <iframe
+                        src={getDocumentPdfUrl(selectedPatientId, selectedDoc.filename)}
+                        className="w-full h-[75vh] rounded border"
+                        title={selectedDoc.filename}
+                      />
                     )}
-                    {!isDocLoading && !isDocError && docContent && (
-                      <pre className="text-sm whitespace-pre-wrap break-words font-sans leading-relaxed">
-                        {docContent.content}
-                      </pre>
+                    {pdfAvailable === false && (
+                      <>
+                        {isDocLoading && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Loading document...
+                          </div>
+                        )}
+                        {isDocError && (
+                          <p className="text-sm text-destructive">Failed to load document content.</p>
+                        )}
+                        {!isDocLoading && !isDocError && docContent && (
+                          <pre className="text-sm whitespace-pre-wrap break-words font-sans leading-relaxed">
+                            {docContent.content}
+                          </pre>
+                        )}
+                      </>
                     )}
                   </SheetContent>
                 </Sheet>
@@ -547,8 +607,17 @@ export default function MainPage() {
                   }}
                 >
                   <CardContent className="pt-4">
-                    <p className="text-sm font-semibold mb-1">{patient.name}</p>
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <p className="text-sm font-semibold">{patient.name}</p>
+                      {lastEvalAt.has(patient.id) ? (
+                        <span className="text-xs text-muted-foreground shrink-0 flex items-center gap-1">
+                          <Clock3 className="h-3 w-3" /> {relativeTime(lastEvalAt.get(patient.id)!)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/50 shrink-0">No evaluations</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="secondary">Payer: {patient.payer}</Badge>
                       <Badge variant="secondary">DOB: {formatDate(patient.dob)}</Badge>
                       <Badge variant="outline">ID: {patient.id}</Badge>
