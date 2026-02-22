@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { evaluate, getAllPatients, getEvaluationRuns, getPatientProfile } from "@/lib/api";
-import type { Laterality, Patient, Procedure } from "@/lib/types";
+import { evaluate, getAllPatients, getDocumentContent, getEvaluationRuns, getPatientProfile } from "@/lib/api";
+import type { Laterality, Patient, PatientDocument, Procedure } from "@/lib/types";
 import CPTSearch from "@/components/CptSearch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ArrowLeft, Clock3, FileText, Loader2, Search, UserRound } from "lucide-react";
 
 export default function MainPage() {
@@ -25,6 +26,7 @@ export default function MainPage() {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [procedure, setProcedure] = useState<Procedure | null>(null);
   const [laterality, setLaterality] = useState<Laterality>("both");
+  const [selectedDoc, setSelectedDoc] = useState<PatientDocument | null>(null);
 
   const {
     data: patients = [],
@@ -86,6 +88,16 @@ export default function MainPage() {
       return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
     })[0];
   }, [runs, selectedPatientId]);
+
+  const {
+    data: docContent,
+    isLoading: isDocLoading,
+    isError: isDocError,
+  } = useQuery({
+    queryKey: ["document-content", selectedPatientId, selectedDoc?.filename],
+    queryFn: () => getDocumentContent(selectedPatientId as string, selectedDoc!.filename),
+    enabled: Boolean(selectedPatientId && selectedDoc),
+  });
 
   const dedupedDocuments = useMemo(() => {
     if (!profile) return [];
@@ -358,27 +370,58 @@ export default function MainPage() {
             ) : null}
 
             {profile && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-primary" />
-                    Clinical Documents
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {dedupedDocuments.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No clinical documents found.</p>
-                  )}
-                  {dedupedDocuments.map((document) => (
-                    <div key={`${document.filename}-${document.date ?? "none"}`} className="rounded-md border px-3 py-2">
-                      <p className="text-sm font-medium break-all">{document.filename}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Type: {document.record_type} | Date: {formatDate(document.date)}
-                      </p>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-primary" />
+                      Clinical Documents
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {dedupedDocuments.length === 0 && (
+                      <p className="text-sm text-muted-foreground">No clinical documents found.</p>
+                    )}
+                    {dedupedDocuments.map((document) => (
+                      <button
+                        key={`${document.filename}-${document.date ?? "none"}`}
+                        type="button"
+                        onClick={() => setSelectedDoc(document)}
+                        className="w-full text-left rounded-md border px-3 py-2 hover:bg-muted transition-colors cursor-pointer"
+                      >
+                        <p className="text-sm font-medium break-all">{document.filename}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Type: {document.record_type} | Date: {formatDate(document.date)}
+                        </p>
+                      </button>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                <Sheet open={Boolean(selectedDoc)} onOpenChange={(open) => { if (!open) setSelectedDoc(null); }}>
+                  <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+                    <SheetHeader className="mb-4">
+                      <SheetTitle className="break-all">{selectedDoc?.filename}</SheetTitle>
+                      <SheetDescription>
+                        {selectedDoc?.record_type} &mdash; {formatDate(selectedDoc?.date ?? null)}
+                      </SheetDescription>
+                    </SheetHeader>
+                    {isDocLoading && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading document...
+                      </div>
+                    )}
+                    {isDocError && (
+                      <p className="text-sm text-destructive">Failed to load document content.</p>
+                    )}
+                    {!isDocLoading && !isDocError && docContent && (
+                      <pre className="text-sm whitespace-pre-wrap break-words font-sans leading-relaxed">
+                        {docContent.content}
+                      </pre>
+                    )}
+                  </SheetContent>
+                </Sheet>
+              </>
             )}
           </>
         ) : (
