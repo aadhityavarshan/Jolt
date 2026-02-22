@@ -8,7 +8,7 @@ interface Props {
 
 export default function EvidenceQuoteCard({ quote }: Props) {
   return (
-    <Card className="bg-muted/50 border-border/60">
+    <Card className="bg-muted/50 border-border/60 transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5 animate-fade-in-up">
       <CardContent className="p-4">
         <div className="flex gap-3">
           <Quote className="h-4 w-4 text-primary shrink-0 mt-0.5" />

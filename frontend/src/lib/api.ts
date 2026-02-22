@@ -3,6 +3,7 @@ import type {
   Procedure,
   EvaluateRequest,
   EvaluationResult,
+  EvaluationRun,
 } from "./types";
 
 let useMock = false;
@@ -52,6 +53,7 @@ export const MOCK_PROCEDURES: Procedure[] = [
 ];
 
 const MOCK_RESULT: EvaluationResult = {
+  determinationId: "mock-determination-id",
   verdict: "MAYBE",
   probability: 68,
   reasons: [
@@ -182,6 +184,7 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
             : "MAYBE";
 
       return {
+        determinationId: trigger.determination_id,
         verdict,
         probability: Math.round((poll.probability_score ?? 0) * 100),
         reasons:
@@ -192,7 +195,7 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
             ?.filter((c) => c.evidence_quote)
             .map((c) => ({
               text: c.evidence_quote as string,
-              source: c.policy_citation || c.clinical_citation || "Clinical records",
+              source: c.clinical_citation || c.policy_citation || "Clinical records",
             })) ?? [],
       };
     }
@@ -201,20 +204,12 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
   throw new Error("Evaluation timed out after 35 seconds");
 }
 
-export async function uploadClinical(
-  patientId: string,
-  recordType: string,
-  date: string,
-  file: File
-): Promise<void> {
+export async function uploadClinical(file: File): Promise<void> {
   if (useMock) {
     await delay(1000);
     return;
   }
   const fd = new FormData();
-  fd.append("patient_id", patientId);
-  fd.append("record_type", recordType);
-  fd.append("date", date);
   fd.append("file", file);
   const res = await fetch(toUrl("/api/upload/clinical"), { method: "POST", body: fd });
   if (!res.ok) {
@@ -222,23 +217,152 @@ export async function uploadClinical(
   }
 }
 
-export async function uploadPolicy(
-  payer: string,
-  cptCodes: string[],
-  policyId: string,
-  file: File
-): Promise<void> {
+export async function uploadPolicy(file: File): Promise<void> {
   if (useMock) {
     await delay(1000);
     return;
   }
   const fd = new FormData();
-  fd.append("payer", payer);
-  fd.append("cpt_codes", cptCodes.join(","));
-  fd.append("policy_id", policyId);
   fd.append("file", file);
   const res = await fetch(toUrl("/api/upload/policy"), { method: "POST", body: fd });
   if (!res.ok) {
     throw new Error(await readError(res, "Policy upload failed"));
   }
+}
+
+export async function downloadLetter(determinationId: string): Promise<void> {
+  if (useMock) {
+    await delay(500);
+    alert("Letter download is not available in mock mode.");
+    return;
+  }
+  const res = await fetch(toUrl(`/api/evaluate/${determinationId}/letter`), {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(await readError(res, "Failed to generate letter"));
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Letter_of_Medical_Necessity_${determinationId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export async function getEvaluationRuns(): Promise<EvaluationRun[]> {
+  if (useMock) {
+    await delay(300);
+    return [
+      {
+        determinationId: "mock-determination-id",
+        patientId: "p1",
+        patientName: "Sarah Johnson",
+        cptCode: "72148",
+        payer: "Aetna",
+        status: "complete",
+        requestedAt: new Date().toISOString(),
+        recommendation: "INSUFFICIENT_INFO",
+        probabilityScore: 0.68,
+        missingInfoCount: 3,
+        completedAt: new Date().toISOString(),
+      },
+    ];
+  }
+
+  const res = await fetch(toUrl("/api/evaluate"));
+  if (!res.ok) {
+    throw new Error(await readError(res, "Failed to fetch evaluation runs"));
+  }
+
+  const rows = await res.json() as Array<{
+    determination_id: string;
+    patient_id: string;
+    patient_name: string;
+    cpt_code: string;
+    payer: string;
+    status: string;
+    requested_at: string;
+    recommendation: "LIKELY_APPROVED" | "LIKELY_DENIED" | "INSUFFICIENT_INFO" | null;
+    probability_score: number | null;
+    missing_info_count: number;
+    completed_at: string | null;
+  }>;
+
+  return rows.map((row) => ({
+    determinationId: row.determination_id,
+    patientId: row.patient_id,
+    patientName: row.patient_name,
+    cptCode: row.cpt_code,
+    payer: row.payer,
+    status: row.status,
+    requestedAt: row.requested_at,
+    recommendation: row.recommendation,
+    probabilityScore: row.probability_score,
+    missingInfoCount: row.missing_info_count,
+    completedAt: row.completed_at,
+  }));
+}
+
+export async function getEvaluationById(determinationId: string): Promise<EvaluationResult> {
+  if (useMock) {
+    await delay(300);
+    return {
+      ...MOCK_RESULT,
+      determinationId,
+    };
+  }
+
+  const res = await fetch(toUrl(`/api/evaluate/${determinationId}`));
+  if (!res.ok) {
+    throw new Error(await readError(res, "Failed to fetch evaluation details"));
+  }
+
+  const poll = await res.json() as {
+    status: "pending" | "error" | "complete";
+    message?: string;
+    probability_score?: number;
+    recommendation?: "LIKELY_APPROVED" | "LIKELY_DENIED" | "INSUFFICIENT_INFO";
+    criteria_results?: Array<{
+      reasoning?: string;
+      evidence_quote?: string | null;
+      policy_citation?: string;
+      clinical_citation?: string | null;
+    }>;
+    missing_info?: string[];
+  };
+
+  if (poll.status === "pending") {
+    throw new Error(poll.message || "Evaluation is still pending");
+  }
+
+  if (poll.status === "error") {
+    throw new Error(poll.message || "Evaluation failed");
+  }
+
+  const verdict =
+    poll.recommendation === "LIKELY_APPROVED"
+      ? "YES"
+      : poll.recommendation === "LIKELY_DENIED"
+        ? "NO"
+        : "MAYBE";
+
+  return {
+    determinationId,
+    verdict,
+    probability: Math.round((poll.probability_score ?? 0) * 100),
+    reasons:
+      poll.criteria_results?.map((c) => c.reasoning).filter((v): v is string => Boolean(v)) ?? [],
+    missingInfo: poll.missing_info ?? [],
+    evidence:
+      poll.criteria_results
+        ?.filter((c) => c.evidence_quote)
+        .map((c) => ({
+          text: c.evidence_quote as string,
+          source: c.clinical_citation || c.policy_citation || "Clinical records",
+        })) ?? [],
+  };
 }

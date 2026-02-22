@@ -12,9 +12,10 @@ interface Props {
   laterality: Laterality;
   onSelect: (p: Procedure) => void;
   onLateralityChange: (l: Laterality) => void;
+  onClearSelection?: () => void;
 }
 
-export default function CPTSearch({ selected, laterality, onSelect, onLateralityChange }: Props) {
+export default function CPTSearch({ selected, laterality, onSelect, onLateralityChange, onClearSelection }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -34,38 +35,46 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
   }, []);
 
   return (
-    <Card>
+    <Card className="card-hover overflow-visible">
       <CardHeader className="pb-3">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <Stethoscope className="h-4 w-4 text-primary" />
           Procedure Selection
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 overflow-visible">
         {/* CPT Search */}
-        <div className="relative" ref={ref}>
+        <div className="relative z-50" ref={ref}>
           <Input
             placeholder="Search by CPT code or procedure name..."
             value={query}
             onChange={(e) => {
-              setQuery(e.target.value);
+              const nextQuery = e.target.value;
+              setQuery(nextQuery);
               setOpen(true);
+
+              if (selected) {
+                const selectedText = `${selected.label} (CPT ${selected.cptCode})`;
+                if (nextQuery !== selectedText) {
+                  onClearSelection?.();
+                }
+              }
             }}
             onFocus={() => query.length >= 2 && setOpen(true)}
           />
           {open && results.length > 0 && (
-            <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg">
+            <div className="absolute z-50 mt-2 w-full rounded-md border bg-popover shadow-xl animate-slide-down max-h-56 overflow-y-auto">
               {results.map((p) => (
                 <button
                   key={p.cptCode}
-                  className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors first:rounded-t-md last:rounded-b-md"
+                  className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors first:rounded-t-md last:rounded-b-md text-sm"
                   onClick={() => {
                     onSelect(p);
-                    setQuery("");
+                    setQuery(`${p.label} (CPT ${p.cptCode})`);
                     setOpen(false);
                   }}
                 >
-                  <span className="font-medium text-sm">{p.label}</span>
+                  <span className="font-medium">{p.label}</span>
                   <span className="text-xs text-muted-foreground ml-2">CPT {p.cptCode}</span>
                 </button>
               ))}
@@ -75,7 +84,7 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
 
         {/* Laterality */}
         {selected?.hasLaterality && (
-          <div className="space-y-2">
+          <div className="space-y-2 animate-fade-in">
             <p className="text-sm font-medium">Laterality</p>
             <ToggleGroup
               type="single"

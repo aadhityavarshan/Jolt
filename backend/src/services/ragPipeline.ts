@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { supabase } from '../db/supabase';
 import { embed } from './embedder';
-import type { CriterionResult, Determination, DocumentChunk } from '../types';
+import type { Coverage, CptCode, CriterionResult, Determination, DocumentChunk, Patient, PriorAuthRequest } from '../types';
 
 if (!process.env.ANTHROPIC_API_KEY) {
   throw new Error('Missing ANTHROPIC_API_KEY in environment');
@@ -120,7 +120,7 @@ export async function evaluateCriterion(
   }
 
   const clinicalText = clinicalChunks
-    .map((c, i) => `[Chunk ${i + 1} — ${c.source_filename}, ID: ${c.id}]\n${c.content}`)
+    .map((c, i) => `[Chunk ${i + 1}]\nSource: ${c.source_filename}\n${c.content}`)
     .join('\n\n---\n\n');
 
   const response = await anthropic.messages.create({
@@ -141,7 +141,7 @@ Return a JSON object with:
 - "met": boolean — is this criterion satisfied by the evidence?
 - "confidence": number 0-1 — how confident are you?
 - "evidence_quote": string or null — exact quote from clinical records supporting your decision
-- "clinical_citation": string or null — the chunk ID (e.g., "Chunk 1 — filename") where evidence was found
+- "chunk_number": number or null — which chunk number (1-${clinicalChunks.length}) contains the evidence
 - "reasoning": string — brief explanation of your decision
 
 Return ONLY the JSON object, no other text.`,
@@ -165,12 +165,21 @@ Return ONLY the JSON object, no other text.`,
   try {
     const jsonStr = textBlock.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const result = JSON.parse(jsonStr);
+
+    // Resolve chunk_number to the actual chunk's source_filename
+    let clinicalCitation: string | null = null;
+    const chunkIdx = typeof result.chunk_number === 'number' ? result.chunk_number - 1 : -1;
+    if (chunkIdx >= 0 && chunkIdx < clinicalChunks.length) {
+      const chunk = clinicalChunks[chunkIdx];
+      clinicalCitation = chunk.source_filename;
+    }
+
     return {
       criterion: criterion.criterion,
       met: Boolean(result.met),
       confidence: Number(result.confidence) || 0.5,
       evidence_quote: result.evidence_quote || null,
-      clinical_citation: result.clinical_citation || null,
+      clinical_citation: clinicalCitation,
       policy_citation: criterion.policy_citation,
       reasoning: result.reasoning || '',
     };
@@ -283,4 +292,188 @@ export async function runEvaluation(
     .eq('id', requestId);
 
   return data as Determination;
+}
+
+// ---------------------------------------------------------------------------
+// Generate Letter of Medical Necessity from a completed determination
+// ---------------------------------------------------------------------------
+
+export async function generateLetter(determinationId: string): Promise<string> {
+  // Fetch determination
+  const { data: determination, error: detErr } = await supabase
+    .from('determinations')
+    .select('*')
+    .eq('request_id', determinationId)
+    .single();
+
+  if (detErr || !determination) {
+    throw new Error('Determination not found');
+  }
+
+  // Fetch the prior auth request for patient/CPT/payer context
+  const { data: request, error: reqErr } = await supabase
+    .from('prior_auth_requests')
+    .select('*')
+    .eq('id', determinationId)
+    .single();
+
+  if (reqErr || !request) {
+    throw new Error('Prior auth request not found');
+  }
+
+  const paRequest = request as PriorAuthRequest;
+
+  // Fetch patient info
+  const { data: patient, error: patErr } = await supabase
+    .from('patients')
+    .select('*')
+    .eq('id', paRequest.patient_id)
+    .single();
+
+  if (patErr || !patient) {
+    throw new Error('Patient not found');
+  }
+
+  // Fetch coverage for member ID and plan name
+  const { data: coverageRows } = await supabase
+    .from('coverage')
+    .select('*')
+    .eq('patient_id', paRequest.patient_id)
+    .eq('payer', paRequest.payer)
+    .eq('is_active', true)
+    .limit(1);
+
+  const coverage = (coverageRows && coverageRows.length > 0 ? coverageRows[0] : null) as Coverage | null;
+
+  // Fetch CPT code description
+  const { data: cptRow } = await supabase
+    .from('cpt_codes')
+    .select('*')
+    .eq('code', paRequest.cpt_code)
+    .single();
+
+  const cpt = cptRow as CptCode | null;
+
+  const pat = patient as Patient;
+  const det = determination as Determination;
+
+  // Build patient identification block
+  const patientBlock = [
+    `Patient Name: ${pat.first_name} ${pat.last_name}`,
+    `Date of Birth: ${pat.dob}`,
+    pat.mrn ? `MRN: ${pat.mrn}` : null,
+    `Insurance Payer: ${paRequest.payer}`,
+    coverage?.member_id ? `Member ID: ${coverage.member_id}` : null,
+    coverage?.plan_name ? `Plan: ${coverage.plan_name}` : null,
+  ].filter(Boolean).join('\n');
+
+  // Build procedure description
+  const procedureName = cpt ? `${cpt.description} (CPT ${cpt.code})` : `CPT ${paRequest.cpt_code}`;
+  const procedureCategory = cpt?.category ? `Category: ${cpt.category}` : '';
+
+  // Build criteria summary for the prompt
+  const metCriteria = det.criteria_results.filter((c: CriterionResult) => c.met);
+  const unmetCriteria = det.criteria_results.filter((c: CriterionResult) => !c.met);
+
+  const metSummary = metCriteria
+    .map((c: CriterionResult) => {
+      const evidence = c.evidence_quote ? `\n   Evidence: "${c.evidence_quote}"` : '';
+      const source = c.clinical_citation ? `\n   Source document: ${c.clinical_citation}` : '';
+      const policy = c.policy_citation ? `\n   Policy reference: ${c.policy_citation}` : '';
+      return `- SATISFIED: ${c.criterion}${evidence}${source}${policy}\n   Reasoning: ${c.reasoning}`;
+    })
+    .join('\n\n');
+
+  const unmetSummary = unmetCriteria
+    .map((c: CriterionResult) => {
+      const policy = c.policy_citation ? `\n   Policy reference: ${c.policy_citation}` : '';
+      return `- NOT YET DOCUMENTED: ${c.criterion}${policy}\n   Reasoning: ${c.reasoning}`;
+    })
+    .join('\n\n');
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 4000,
+    messages: [
+      {
+        role: 'user',
+        content: `You are a physician writing a formal Letter of Medical Necessity (LMN) for a prior authorization request. Write a professional, detailed letter that a physician would sign and submit to an insurance company.
+
+=== PATIENT & INSURANCE INFORMATION ===
+${patientBlock}
+
+=== REQUESTED PROCEDURE ===
+Procedure: ${procedureName}
+${procedureCategory}
+
+=== PAYER CRITERIA EVALUATION (from ${paRequest.payer} policy) ===
+
+Criteria satisfied by clinical evidence:
+${metSummary || '(none)'}
+
+Criteria not yet documented:
+${unmetSummary || '(none — all criteria satisfied)'}
+
+=== INSTRUCTIONS ===
+
+Write the letter with these exact sections in this order:
+
+1. DATE AND HEADER
+   - Today's date: ${new Date().toISOString().split('T')[0]}
+   - "To: Medical Director, ${paRequest.payer}"
+   - "Re: Prior Authorization Request — ${procedureName}"
+   - "Patient: ${pat.first_name} ${pat.last_name}, DOB: ${pat.dob}${coverage?.member_id ? `, Member ID: ${coverage.member_id}` : ''}"
+
+2. OPENING PARAGRAPH
+   - State you are the treating physician requesting prior authorization
+   - Identify the patient, their primary condition, and the specific procedure requested
+   - State the procedure is medically necessary
+
+3. CLINICAL HISTORY AND DIAGNOSIS
+   - Summarize the patient's relevant medical history based on the evidence found
+   - Include severity and duration of condition if evident from the clinical records
+   - Reference conservative treatments attempted if mentioned in the evidence
+
+4. CLINICAL JUSTIFICATION (this is the most important section — be thorough)
+   - For EACH satisfied criterion, write a paragraph explaining:
+     a) What the payer's policy requires (reference the policy criterion)
+     b) How the patient's clinical evidence meets that requirement
+     c) Include DIRECT QUOTES from the clinical records as evidence — put these in quotation marks
+     d) Name the source document for each quote
+
+5. PENDING DOCUMENTATION (only if there are unmet criteria)
+   - For each unmet criterion, acknowledge what documentation is still needed
+   - State that supplemental records will be provided upon request
+
+6. STATEMENT OF MEDICAL NECESSITY
+   - A clear, firm paragraph stating that based on the clinical evidence reviewed, the requested procedure meets the standard of medical necessity
+   - Reference that the patient meets the payer's own published clinical criteria
+
+7. CLOSING
+   - Offer to provide additional information
+   - Include signature block:
+     "Sincerely,"
+     "[Treating Physician Name, MD]"
+     "[Specialty]"
+     "[Practice Name]"
+     "[Phone] | [Fax]"
+     "NPI: [Number]"
+
+FORMATTING RULES:
+- Write in plain text only — NO markdown (no #, *, -, or bullet characters)
+- Use blank lines between paragraphs
+- Use "CLINICAL JUSTIFICATION", "STATEMENT OF MEDICAL NECESSITY" etc. as section labels on their own line, in all caps
+- Do NOT include approval probability or recommendation scores — this is a physician advocacy letter
+- Maintain formal, authoritative medical tone throughout
+- The letter should read as if written by a physician who has personally reviewed the patient's records`,
+      },
+    ],
+  });
+
+  const textBlock = response.content.find((b) => b.type === 'text');
+  if (!textBlock || textBlock.type !== 'text') {
+    throw new Error('Failed to generate letter from Claude');
+  }
+
+  return textBlock.text;
 }

@@ -22,11 +22,26 @@ export interface EvidenceQuote {
 }
 
 export interface EvaluationResult {
+  determinationId: string;
   verdict: Verdict;
   probability: number;
   reasons: string[];
   missingInfo: string[];
   evidence: EvidenceQuote[];
+}
+
+export interface EvaluationRun {
+  determinationId: string;
+  patientId: string;
+  patientName: string;
+  cptCode: string;
+  payer: string;
+  status: "pending" | "complete" | "error" | string;
+  requestedAt: string;
+  recommendation: "LIKELY_APPROVED" | "LIKELY_DENIED" | "INSUFFICIENT_INFO" | null;
+  probabilityScore: number | null;
+  missingInfoCount: number;
+  completedAt: string | null;
 }
 
 export interface EvaluateRequest {
