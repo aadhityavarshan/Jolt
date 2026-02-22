@@ -38,21 +38,58 @@ async function searchChunks(
   return data as DocumentChunk[];
 }
 
+/**
+ * Direct metadata-based lookup for policy chunks by CPT code.
+ * Uses JSONB containment (@>) to find chunks whose metadata.cpt_codes array contains the target code.
+ */
+async function directPolicyLookup(cptCode: string, payer?: string): Promise<DocumentChunk[]> {
+  let query = supabase
+    .from('document_chunks')
+    .select('id, content, metadata, source_filename')
+    .contains('metadata', { type: 'policy', cpt_codes: [cptCode] });
+
+  if (payer) {
+    query = query.contains('metadata', { payer });
+  }
+
+  const { data, error } = await query.limit(10);
+  if (error) {
+    console.error(`[directPolicyLookup] error: ${error.message}`);
+    return [];
+  }
+  return (data ?? []).map((row) => ({
+    ...row,
+    similarity: 1.0,
+  })) as DocumentChunk[];
+}
+
 export async function extractPolicyCriteria(
   cptCode: string,
   payer: string
 ): Promise<{ criteria: PolicyCriterion[]; policyChunks: DocumentChunk[] }> {
-  // First try payer-specific policy
-  let policyChunks = await searchChunks(
-    `${cptCode} ${payer} prior authorization medical necessity criteria requirements`,
-    { type: 'policy', payer },
-    10,
-    0.25
-  );
+  // Strategy 1: Direct lookup by CPT code + payer in metadata (most reliable)
+  let policyChunks = await directPolicyLookup(cptCode, payer);
 
-  // Fallback: if no payer-specific policy found, use any available policy for this CPT code
+  // Strategy 2: Direct lookup by CPT code only (any payer)
   if (policyChunks.length === 0) {
-    console.log(`[ragPipeline] No policy found for payer=${payer}, falling back to any available policy for CPT ${cptCode}`);
+    console.log(`[ragPipeline] No direct policy for CPT=${cptCode} payer=${payer}, trying any payer...`);
+    policyChunks = await directPolicyLookup(cptCode);
+  }
+
+  // Strategy 3: Vector search fallback (for policies without cpt_codes metadata)
+  if (policyChunks.length === 0) {
+    console.log(`[ragPipeline] No direct policy found, falling back to vector search for CPT ${cptCode}`);
+    policyChunks = await searchChunks(
+      `${cptCode} ${payer} prior authorization medical necessity criteria requirements`,
+      { type: 'policy', payer },
+      10,
+      0.25
+    );
+  }
+
+  // Strategy 4: Vector search without payer filter
+  if (policyChunks.length === 0) {
+    console.log(`[ragPipeline] Vector search with payer failed, trying without payer filter...`);
     policyChunks = await searchChunks(
       `${cptCode} prior authorization medical necessity criteria requirements`,
       { type: 'policy' },
