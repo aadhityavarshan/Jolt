@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import EvidenceQuoteCard from "./EvidenceQuoteCard";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, AlertTriangle, XCircle, FileText, AlertCircle, BookOpen, Download, Loader2 } from "lucide-react";
+import { CheckCircle2, AlertTriangle, XCircle, FileText, AlertCircle, BookOpen, Download, Loader2, ChevronDown } from "lucide-react";
+import { categorizeReasons, groupReasonsByCategory, categoryConfig } from "@/lib/reasonCategories";
 
 interface Props {
   result: EvaluationResult;
@@ -35,6 +36,12 @@ export default function EvaluateResults({ result }: Props) {
   const v = verdictConfig[result.verdict];
   const [letterLoading, setLetterLoading] = useState(false);
   const [letterError, setLetterError] = useState<string | null>(null);
+  const [expandedReasons, setExpandedReasons] = useState(false);
+
+  const categorizedReasons = categorizeReasons(result.reasons);
+  const groupedReasons = groupReasonsByCategory(categorizedReasons);
+  const reasonsWithCategory = categorizedReasons.filter((r) => r.category !== "other");
+  const maxInitialReasons = 3;
 
   const handleDownloadLetter = async () => {
     setLetterLoading(true);
@@ -115,45 +122,116 @@ export default function EvaluateResults({ result }: Props) {
 
         <Separator />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card className="border-muted">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-                <AlertCircle className="h-3.5 w-3.5 text-primary" /> Why
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {result.reasons.length > 0 ? (
-                <ul className="space-y-2 ml-5">
-                  {result.reasons.map((r, i) => (
-                    <li key={i} className="text-sm text-muted-foreground list-disc">{r}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">No reason details were returned.</p>
-              )}
-            </CardContent>
-          </Card>
+        <Card className="border-muted bg-muted/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Missing Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="max-h-32 overflow-y-auto">
+            {result.missingInfo.length > 0 ? (
+              <ul className="space-y-1.5">
+                {result.missingInfo.map((m, i) => (
+                  <li key={i} className="text-xs text-muted-foreground leading-relaxed">
+                    <span className="inline-block mr-1.5">•</span>
+                    {m}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-1">No missing information detected.</p>
+            )}
+          </CardContent>
+        </Card>
 
-          <Card className="border-muted">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Missing Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {result.missingInfo.length > 0 ? (
-                <ul className="space-y-2 ml-5">
-                  {result.missingInfo.map((m, i) => (
-                    <li key={i} className="text-sm text-muted-foreground list-disc">{m}</li>
-                  ))}
-                </ul>
+        <Card className="border-muted">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5 text-primary" /> Supporting Reasons
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+              {result.reasons.length > 0 ? (
+                <>
+                  {/* Show initial reasons or all if expanded */}
+                  <div className="space-y-2">
+                    {result.reasons
+                      .slice(0, expandedReasons ? undefined : maxInitialReasons)
+                      .map((reason, i) => {
+                        const categorized = categorizedReasons[i];
+                        const config = categoryConfig[categorized.category];
+                        return (
+                          <div
+                            key={i}
+                            className={`p-3 rounded-md text-sm ${config.bgColor}`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <span className="text-lg mt-0.5">{config.icon}</span>
+                              <span className="text-muted-foreground leading-relaxed">
+                                {reason}
+                              </span>
+                            </div>
+                            <Badge
+                              variant="secondary"
+                              className={`mt-2 text-xs ${config.color}`}
+                            >
+                              {config.label}
+                            </Badge>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  {/* Show More / Show Less button */}
+                  {result.reasons.length > maxInitialReasons && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setExpandedReasons(!expandedReasons)}
+                      className="w-full mt-2"
+                    >
+                      <ChevronDown
+                        className={`h-4 w-4 mr-1.5 transition-transform ${
+                          expandedReasons ? "rotate-180" : ""
+                        }`}
+                      />
+                      {expandedReasons
+                        ? "Show Less"
+                        : `Show ${result.reasons.length - maxInitialReasons} More`}
+                    </Button>
+                  )}
+
+                  {/* Summary stats */}
+                  {result.reasons.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-muted-foreground/10">
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(groupedReasons)
+                          .filter(([_, reasons]) => reasons.length > 0)
+                          .map(([category, reasons]) => {
+                            const cat = category as keyof typeof categoryConfig;
+                            return (
+                              <div key={category} className="text-xs">
+                                <p className="text-muted-foreground">
+                                  {categoryConfig[cat].icon}{" "}
+                                  {categoryConfig[cat].label}
+                                </p>
+                                <p className="font-semibold text-foreground">
+                                  {reasons.length}
+                                </p>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
-                <p className="text-sm text-muted-foreground">No missing information detected.</p>
+                <p className="text-sm text-muted-foreground">
+                  No reason details were returned.
+                </p>
               )}
             </CardContent>
           </Card>
-        </div>
 
         <div className="space-y-3">
           <h4 className="text-sm font-semibold flex items-center gap-1.5">
