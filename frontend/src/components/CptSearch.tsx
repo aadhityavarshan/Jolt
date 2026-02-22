@@ -5,7 +5,11 @@ import type { Procedure, Laterality } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Stethoscope } from "lucide-react";
+import AnatomyHighlighter from "./AnatomyHighlighter";
+import { getProcedureDescription } from "@/lib/procedureDescriptions";
 
 interface Props {
   selected: Procedure | null;
@@ -18,6 +22,7 @@ interface Props {
 export default function CPTSearch({ selected, laterality, onSelect, onLateralityChange, onClearSelection }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const { data: results = [] } = useQuery({
@@ -82,6 +87,15 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
           )}
         </div>
 
+        {/* Learn More Button */}
+        <Button
+          onClick={() => setHelpOpen(true)}
+          disabled={!selected}
+          className="w-full"
+        >
+          Learn More
+        </Button>
+
         {/* Laterality */}
         {selected?.hasLaterality && (
           <div className="space-y-2 animate-fade-in">
@@ -98,6 +112,36 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
             </ToggleGroup>
           </div>
         )}
+
+        {/* Help Sheet */}
+        <Sheet open={helpOpen} onOpenChange={setHelpOpen}>
+          <SheetContent side="right" className="w-full sm:w-[600px] overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle className="text-left">Procedure Details</SheetTitle>
+            </SheetHeader>
+            {selected && (
+              <div className="space-y-6 mt-6">
+                {/* Procedure Info */}
+                <div>
+                  <h3 className="font-semibold text-base mb-2">{selected.label}</h3>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    <span className="text-foreground font-medium">CPT Code:</span> {selected.cptCode}
+                  </p>
+                  <div className="p-3 bg-muted rounded-md border border-muted-foreground/20">
+                    <p className="text-sm text-foreground leading-relaxed">
+                      {getProcedureDescription(selected.cptCode, selected.label)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Anatomy View */}
+                <div className="border-t pt-6">
+                  <AnatomyHighlighter procedureLabel={selected.label} />
+                </div>
+              </div>
+            )}
+          </SheetContent>
+        </Sheet>
       </CardContent>
     </Card>
   );
