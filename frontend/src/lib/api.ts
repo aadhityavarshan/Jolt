@@ -333,6 +333,10 @@ export async function getDocumentContent(
   return res.json() as Promise<{ filename: string; content: string; record_type: string; date: string | null }>;
 }
 
+export function getDocumentPdfUrl(patientId: string, filename: string): string {
+  return toUrl(`/api/patients/${patientId}/documents/${encodeURIComponent(filename)}/pdf`);
+}
+
 export async function uploadClinical(file: File): Promise<void> {
   if (useMock) {
     await delay(1000);

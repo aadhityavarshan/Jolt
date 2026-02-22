@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { evaluate, getAllPatients, getDocumentContent, getEvaluationRuns, getPatientProfile } from "@/lib/api";
+import { evaluate, getAllPatients, getDocumentContent, getDocumentPdfUrl, getEvaluationRuns, getPatientProfile } from "@/lib/api";
 import type { Laterality, Patient, PatientDocument, Procedure } from "@/lib/types";
 import CPTSearch from "@/components/CptSearch";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,7 @@ export default function MainPage() {
   const [procedure, setProcedure] = useState<Procedure | null>(null);
   const [laterality, setLaterality] = useState<Laterality>("both");
   const [selectedDoc, setSelectedDoc] = useState<PatientDocument | null>(null);
+  const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
 
   const {
     data: patients = [],
@@ -100,6 +101,18 @@ export default function MainPage() {
     queryFn: () => getDocumentContent(selectedPatientId as string, selectedDoc!.filename),
     enabled: Boolean(selectedPatientId && selectedDoc),
   });
+
+  // Check if a native PDF is available in storage for the selected document
+  useEffect(() => {
+    if (!selectedPatientId || !selectedDoc) {
+      setPdfAvailable(null);
+      return;
+    }
+    const url = getDocumentPdfUrl(selectedPatientId, selectedDoc.filename);
+    fetch(url, { method: "HEAD" })
+      .then((res) => setPdfAvailable(res.ok))
+      .catch(() => setPdfAvailable(false));
+  }, [selectedPatientId, selectedDoc]);
 
   const dedupedDocuments = useMemo(() => {
     if (!profile) return [];
@@ -401,25 +414,41 @@ export default function MainPage() {
                 </Card>
 
                 <Sheet open={Boolean(selectedDoc)} onOpenChange={(open) => { if (!open) setSelectedDoc(null); }}>
-                  <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+                  <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
                     <SheetHeader className="mb-4">
                       <SheetTitle className="break-all">{selectedDoc?.filename}</SheetTitle>
                       <SheetDescription>
                         {selectedDoc?.record_type} &mdash; {formatDate(selectedDoc?.date ?? null)}
                       </SheetDescription>
                     </SheetHeader>
-                    {isDocLoading && (
+                    {pdfAvailable === null && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" /> Loading document...
                       </div>
                     )}
-                    {isDocError && (
-                      <p className="text-sm text-destructive">Failed to load document content.</p>
+                    {pdfAvailable && selectedPatientId && selectedDoc && (
+                      <iframe
+                        src={getDocumentPdfUrl(selectedPatientId, selectedDoc.filename)}
+                        className="w-full h-[75vh] rounded border"
+                        title={selectedDoc.filename}
+                      />
                     )}
-                    {!isDocLoading && !isDocError && docContent && (
-                      <pre className="text-sm whitespace-pre-wrap break-words font-sans leading-relaxed">
-                        {docContent.content}
-                      </pre>
+                    {pdfAvailable === false && (
+                      <>
+                        {isDocLoading && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Loading document...
+                          </div>
+                        )}
+                        {isDocError && (
+                          <p className="text-sm text-destructive">Failed to load document content.</p>
+                        )}
+                        {!isDocLoading && !isDocError && docContent && (
+                          <pre className="text-sm whitespace-pre-wrap break-words font-sans leading-relaxed">
+                            {docContent.content}
+                          </pre>
+                        )}
+                      </>
                     )}
                   </SheetContent>
                 </Sheet>
