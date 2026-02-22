@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { supabase } from '../db/supabase';
-import { parsePdfBuffer } from '../services/pdfParser';
+import { isSupportedUploadMimeType, parseUploadedDocumentBuffer } from '../services/pdfParser';
 import { chunkText } from '../services/chunker';
 import { embedBatch } from '../services/embedder';
 import { extractClinicalMetadata, extractPolicyMetadata } from '../services/metadataExtractor';
@@ -16,14 +16,17 @@ router.post('/clinical', upload.single('file'), async (req: Request, res: Respon
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-    if (req.file.mimetype !== 'application/pdf') {
-      return res.status(400).json({ error: 'Only PDF files are accepted', filename: req.file.originalname });
+    if (!isSupportedUploadMimeType(req.file.mimetype)) {
+      return res.status(400).json({
+        error: 'Unsupported file type. Accepted: PDF, TXT, PNG, JPG/JPEG, WEBP, GIF',
+        filename: req.file.originalname,
+      });
     }
 
     const filename = req.file.originalname;
 
-    console.log(`[upload/clinical] Parsing PDF: ${filename}`);
-    const text = await parsePdfBuffer(req.file.buffer);
+    console.log(`[upload/clinical] Parsing document: ${filename} (${req.file.mimetype})`);
+    const text = await parseUploadedDocumentBuffer(req.file.buffer, req.file.mimetype);
 
     console.log(`[upload/clinical] Extracting metadata via Claude...`);
     const { patient_id, record_type, date } = await extractClinicalMetadata(text);
@@ -80,14 +83,17 @@ router.post('/policy', upload.single('file'), async (req: Request, res: Response
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-    if (req.file.mimetype !== 'application/pdf') {
-      return res.status(400).json({ error: 'Only PDF files are accepted', filename: req.file.originalname });
+    if (!isSupportedUploadMimeType(req.file.mimetype)) {
+      return res.status(400).json({
+        error: 'Unsupported file type. Accepted: PDF, TXT, PNG, JPG/JPEG, WEBP, GIF',
+        filename: req.file.originalname,
+      });
     }
 
     const filename = req.file.originalname;
 
-    console.log(`[upload/policy] Parsing PDF: ${filename}`);
-    const text = await parsePdfBuffer(req.file.buffer);
+    console.log(`[upload/policy] Parsing document: ${filename} (${req.file.mimetype})`);
+    const text = await parseUploadedDocumentBuffer(req.file.buffer, req.file.mimetype);
 
     console.log(`[upload/policy] Extracting metadata via Claude...`);
     const { payer, cpt_codes, policy_id } = await extractPolicyMetadata(text);

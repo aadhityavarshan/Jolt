@@ -10,7 +10,7 @@ interface Props {
   disabled?: boolean;
 }
 
-export default function FileDropzone({ file, onFileChange, accept = ".pdf,.txt", disabled }: Props) {
+export default function FileDropzone({ file, onFileChange, accept = ".pdf,.txt,.png,.jpg,.jpeg,.webp,.gif", disabled }: Props) {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -87,7 +87,7 @@ export default function FileDropzone({ file, onFileChange, accept = ".pdf,.txt",
           <p className="text-sm font-medium text-foreground">
             Drop file here or <span className="text-primary">browse</span>
           </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">PDF or TXT accepted</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">PDF, TXT, PNG, JPG, WEBP, or GIF accepted</p>
         </div>
       </div>
       <input
