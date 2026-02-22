@@ -46,8 +46,29 @@ export default function EvaluationResultPage() {
   const { data: patientOptions = [], isFetching: isPatientFetching } = useQuery({
     queryKey: ["results-patient-lookup", patientQuery],
     queryFn: () => searchPatients(patientQuery),
-    enabled: patientQuery.length >= 2,
+    enabled: patientQuery.length >= 1,
   });
+
+  const allPatientNames = useMemo(() => {
+    return runs
+      .reduce<{ id: string; name: string; payer: string }[]>((acc, run) => {
+        if (!acc.some((p) => p.id === run.patientId)) {
+          acc.push({ id: run.patientId, name: run.patientName, payer: run.payer });
+        }
+        return acc;
+      }, [])
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [runs]);
+
+  const dropdownPatients = useMemo(() => {
+    if (patientQuery.length >= 1 && patientOptions.length > 0) {
+      return patientOptions;
+    }
+    if (patientQuery.length === 0 && allPatientNames.length > 0) {
+      return allPatientNames.map((p) => ({ id: p.id, name: p.name, dob: "", payer: p.payer }));
+    }
+    return [];
+  }, [patientQuery, patientOptions, allPatientNames]);
 
   const selectedRun = useMemo(
     () => (selectedRunId ? runs.find((run) => run.determinationId === selectedRunId) ?? null : null),
@@ -303,22 +324,30 @@ export default function EvaluationResultPage() {
                       setPatientQuery(e.target.value);
                       setPatientLookupOpen(true);
                     }}
-                    onFocus={() => patientQuery.length >= 2 && setPatientLookupOpen(true)}
-                    placeholder="Find a patient to filter runs..."
+                    onFocus={() => setPatientLookupOpen(true)}
+                    onBlur={(e) => {
+                      if (patientLookupRef.current && !patientLookupRef.current.contains(e.relatedTarget as Node)) {
+                        setPatientLookupOpen(false);
+                      }
+                    }}
+                    placeholder="Type to search patients..."
                     className="pl-9"
                   />
-                  {patientLookupOpen && patientQuery.length >= 2 && (
+                  {patientLookupOpen && (
                     <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg max-h-52 overflow-auto">
                       {isPatientFetching && (
                         <div className="px-3 py-2 text-sm text-muted-foreground">Searching patients...</div>
                       )}
-                      {!isPatientFetching && patientOptions.length === 0 && (
+                      {!isPatientFetching && dropdownPatients.length === 0 && patientQuery.length >= 1 && (
                         <div className="px-3 py-2 text-sm text-muted-foreground">No patients found.</div>
                       )}
-                      {!isPatientFetching && patientOptions.map((p) => (
+                      {!isPatientFetching && dropdownPatients.length === 0 && patientQuery.length === 0 && allPatientNames.length === 0 && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">Start typing a patient name...</div>
+                      )}
+                      {!isPatientFetching && dropdownPatients.map((p) => (
                         <button
                           key={p.id}
-                          className="w-full text-left px-3 py-2 hover:bg-accent transition-colors"
+                          className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors first:rounded-t-md last:rounded-b-md"
                           onClick={() => {
                             setSelectedPatient(p);
                             setPatientQuery("");
@@ -326,7 +355,8 @@ export default function EvaluationResultPage() {
                           }}
                         >
                           <span className="text-sm font-medium">{p.name}</span>
-                          <span className="ml-2 text-xs text-muted-foreground">DOB: {p.dob}</span>
+                          {p.dob && <span className="ml-2 text-xs text-muted-foreground">DOB: {p.dob}</span>}
+                          {p.payer && <span className="ml-2 text-xs text-muted-foreground">• {p.payer}</span>}
                         </button>
                       ))}
                     </div>
@@ -388,12 +418,15 @@ export default function EvaluationResultPage() {
                 }}
               >
                 <CardContent className="pt-4">
+                  <p className="text-sm font-semibold mb-1">{run.patientName}</p>
+                  {run.procedureDescription && (
+                    <p className="text-sm text-muted-foreground mb-2">{run.procedureDescription}</p>
+                  )}
                   <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <Badge variant="outline">ID: {run.determinationId}</Badge>
-                    <Badge variant="secondary">Status: {run.status}</Badge>
-                    <Badge variant="secondary">Patient: {run.patientName}</Badge>
                     <Badge variant="secondary">CPT: {run.cptCode}</Badge>
                     <Badge variant="secondary">Payer: {run.payer}</Badge>
+                    <Badge variant="secondary">Status: {run.status}</Badge>
+                    <Badge variant="outline">ID: {run.determinationId}</Badge>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-muted-foreground">
                     <p>Requested: {formatDateTime(run.requestedAt)}</p>

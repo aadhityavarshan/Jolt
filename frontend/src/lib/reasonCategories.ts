@@ -57,8 +57,9 @@ const categoryKeywords: Record<ReasonCategory, string[]> = {
   other: [],
 };
 
-export function categorizeReasons(reasons: string[]): CategorizedReason[] {
-  return reasons.map((text) => {
+export function categorizeReasons(reasons: (string | { reasoning: string })[]): CategorizedReason[] {
+  return reasons.map((r) => {
+    const text = typeof r === "string" ? r : r.reasoning;
     const lowerText = text.toLowerCase();
     const category = (
       Object.entries(categoryKeywords).find(([_, keywords]) =>
@@ -94,31 +95,31 @@ export const categoryConfig: Record<
 > = {
   "medical-necessity": {
     label: "Medical Necessity",
-    icon: "🏥",
+    icon: "",
     color: "text-blue-600",
     bgColor: "bg-blue-50 border-l-4 border-blue-500",
   },
   documentation: {
     label: "Documentation",
-    icon: "📋",
+    icon: "",
     color: "text-purple-600",
     bgColor: "bg-purple-50 border-l-4 border-purple-500",
   },
   "clinical-evidence": {
     label: "Clinical Evidence",
-    icon: "📊",
+    icon: "",
     color: "text-green-600",
     bgColor: "bg-green-50 border-l-4 border-green-500",
   },
   "patient-factors": {
     label: "Patient Factors",
-    icon: "👤",
+    icon: "",
     color: "text-orange-600",
     bgColor: "bg-orange-50 border-l-4 border-orange-500",
   },
   other: {
     label: "Additional Factors",
-    icon: "ℹ️",
+    icon: "",
     color: "text-gray-600",
     bgColor: "bg-gray-50 border-l-4 border-gray-500",
   },

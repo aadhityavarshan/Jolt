@@ -58,27 +58,33 @@ const MOCK_RESULT: EvaluationResult = {
   verdict: "MAYBE",
   probability: 68,
   reasons: [
-    "Patient has documented chronic knee pain for over 6 months.",
-    "Conservative treatments (PT, injections) have been partially attempted.",
-    "Imaging confirms moderate osteoarthritis in the target joint.",
+    {
+      reasoning: "• Patient reports persistent knee pain lasting over 6 months\n• Multiple clinical encounters document ongoing symptoms\n• Timeline meets payer minimum duration requirement",
+      evidence: {
+        text: "Total knee arthroplasty is considered medically necessary when the member has failed at least 3 months of conservative therapy including physical therapy.",
+        source: "Aetna Clinical Policy Bulletin #0016",
+        page: 4,
+      },
+    },
+    {
+      reasoning: "• Physical therapy initiated but records show incomplete course\n• Corticosteroid injections administered with limited relief\n• Full conservative treatment protocol not yet exhausted",
+      evidence: {
+        text: "Documentation must include radiographic evidence of joint space narrowing, osteophyte formation, or subchondral sclerosis.",
+        source: "Aetna Clinical Policy Bulletin #0016",
+        page: 7,
+      },
+    },
+    {
+      reasoning: "• X-ray findings show Kellgren-Lawrence grade III osteoarthritis\n• Imaging confirms joint space narrowing in the medial compartment\n• Radiological evidence supports surgical intervention",
+      evidence: null,
+    },
   ],
   missingInfo: [
     "Physical therapy completion records (minimum 6 weeks required by payer).",
     "Updated BMI documentation within the last 90 days.",
     "Specialist referral letter from primary care physician.",
   ],
-  evidence: [
-    {
-      text: "Total knee arthroplasty is considered medically necessary when the member has failed at least 3 months of conservative therapy including physical therapy.",
-      source: "Aetna Clinical Policy Bulletin #0016",
-      page: 4,
-    },
-    {
-      text: "Documentation must include radiographic evidence of joint space narrowing, osteophyte formation, or subchondral sclerosis.",
-      source: "Aetna Clinical Policy Bulletin #0016",
-      page: 7,
-    },
-  ],
+  evidence: [],
 };
 
 function toMockProfile(patient: Patient): PatientProfile {
@@ -289,15 +295,16 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
         determinationId: trigger.determination_id,
         verdict,
         probability: Math.round((poll.probability_score ?? 0) * 100),
-        reasons: poll.criteria_results?.map((c) => c.reasoning).filter((v): v is string => Boolean(v)) ?? [],
+        reasons: poll.criteria_results
+          ?.filter((c) => c.reasoning)
+          .map((c) => ({
+            reasoning: c.reasoning!,
+            evidence: c.evidence_quote
+              ? { text: c.evidence_quote, source: c.clinical_citation || c.policy_citation || "Clinical records" }
+              : null,
+          })) ?? [],
         missingInfo: poll.missing_info ?? [],
-        evidence:
-          poll.criteria_results
-            ?.filter((c) => c.evidence_quote)
-            .map((c) => ({
-              text: c.evidence_quote as string,
-              source: c.clinical_citation || c.policy_citation || "Clinical records",
-            })) ?? [],
+        evidence: [],
       };
     }
   }
@@ -384,6 +391,7 @@ export async function getEvaluationRuns(): Promise<EvaluationRun[]> {
         patientId: "p1",
         patientName: "Sarah Johnson",
         cptCode: "72148",
+        procedureDescription: "MRI Lumbar Spine without Contrast",
         payer: "Aetna",
         status: "complete",
         requestedAt: new Date().toISOString(),
@@ -405,6 +413,7 @@ export async function getEvaluationRuns(): Promise<EvaluationRun[]> {
     patient_id: string;
     patient_name: string;
     cpt_code: string;
+    procedure_description: string | null;
     payer: string;
     status: string;
     requested_at: string;
@@ -419,6 +428,7 @@ export async function getEvaluationRuns(): Promise<EvaluationRun[]> {
     patientId: row.patient_id,
     patientName: row.patient_name,
     cptCode: row.cpt_code,
+    procedureDescription: row.procedure_description,
     payer: row.payer,
     status: row.status,
     requestedAt: row.requested_at,
@@ -476,14 +486,15 @@ export async function getEvaluationById(determinationId: string): Promise<Evalua
     determinationId,
     verdict,
     probability: Math.round((poll.probability_score ?? 0) * 100),
-    reasons: poll.criteria_results?.map((c) => c.reasoning).filter((v): v is string => Boolean(v)) ?? [],
+    reasons: poll.criteria_results
+      ?.filter((c) => c.reasoning)
+      .map((c) => ({
+        reasoning: c.reasoning!,
+        evidence: c.evidence_quote
+          ? { text: c.evidence_quote, source: c.clinical_citation || c.policy_citation || "Clinical records" }
+          : null,
+      })) ?? [],
     missingInfo: poll.missing_info ?? [],
-    evidence:
-      poll.criteria_results
-        ?.filter((c) => c.evidence_quote)
-        .map((c) => ({
-          text: c.evidence_quote as string,
-          source: c.clinical_citation || c.policy_citation || "Clinical records",
-        })) ?? [],
+    evidence: [],
   };
 }

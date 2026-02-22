@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { evaluate, getAllPatients, getDocumentContent, getEvaluationRuns, getPatientProfile } from "@/lib/api";
@@ -22,6 +22,8 @@ import { ArrowLeft, Clock3, FileText, Loader2, Search, UserRound } from "lucide-
 export default function MainPage() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
+  const searchDropdownRef = useRef<HTMLDivElement>(null);
   const [payerFilter, setPayerFilter] = useState<string>("all");
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [procedure, setProcedure] = useState<Procedure | null>(null);
@@ -434,14 +436,53 @@ export default function MainPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-                <div className="relative lg:col-span-3">
+                <div className="relative lg:col-span-3" ref={searchDropdownRef}>
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Search by patient name, ID, or DOB..."
+                    onChange={(event) => {
+                      setSearchTerm(event.target.value);
+                      setSearchDropdownOpen(true);
+                    }}
+                    onFocus={() => setSearchDropdownOpen(true)}
+                    onBlur={(e) => {
+                      if (searchDropdownRef.current && !searchDropdownRef.current.contains(e.relatedTarget as Node)) {
+                        setSearchDropdownOpen(false);
+                      }
+                    }}
+                    placeholder="Type to search patients..."
                     className="pl-9"
                   />
+                  {searchDropdownOpen && filteredPatients.length > 0 && (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg max-h-64 overflow-auto">
+                      {filteredPatients.slice(0, 20).map((patient) => (
+                        <button
+                          key={patient.id}
+                          className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors first:rounded-t-md last:rounded-b-md"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            handleSelectPatient(patient);
+                            setSearchTerm("");
+                            setSearchDropdownOpen(false);
+                          }}
+                        >
+                          <span className="text-sm font-medium">{patient.name}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">DOB: {patient.dob}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">• {patient.payer}</span>
+                        </button>
+                      ))}
+                      {filteredPatients.length > 20 && (
+                        <div className="px-3 py-2 text-xs text-muted-foreground border-t">
+                          {filteredPatients.length - 20} more — keep typing to narrow results
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {searchDropdownOpen && searchTerm.length > 0 && filteredPatients.length === 0 && !isPatientsLoading && (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg px-3 py-2.5 text-sm text-muted-foreground">
+                      No patients found.
+                    </div>
+                  )}
                 </div>
 
                 <Select value={payerFilter} onValueChange={setPayerFilter}>
@@ -506,12 +547,12 @@ export default function MainPage() {
                   }}
                 >
                   <CardContent className="pt-4">
+                    <p className="text-sm font-semibold mb-1">{patient.name}</p>
                     <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <Badge variant="secondary">Patient: {patient.name}</Badge>
                       <Badge variant="secondary">Payer: {patient.payer}</Badge>
+                      <Badge variant="secondary">DOB: {formatDate(patient.dob)}</Badge>
                       <Badge variant="outline">ID: {patient.id}</Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">DOB: {formatDate(patient.dob)}</p>
                   </CardContent>
                 </Card>
               ))}
