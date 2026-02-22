@@ -42,12 +42,24 @@ export async function extractPolicyCriteria(
   cptCode: string,
   payer: string
 ): Promise<{ criteria: PolicyCriterion[]; policyChunks: DocumentChunk[] }> {
-  const policyChunks = await searchChunks(
+  // First try payer-specific policy
+  let policyChunks = await searchChunks(
     `${cptCode} ${payer} prior authorization medical necessity criteria requirements`,
     { type: 'policy', payer },
     10,
     0.25
   );
+
+  // Fallback: if no payer-specific policy found, use any available policy for this CPT code
+  if (policyChunks.length === 0) {
+    console.log(`[ragPipeline] No policy found for payer=${payer}, falling back to any available policy for CPT ${cptCode}`);
+    policyChunks = await searchChunks(
+      `${cptCode} prior authorization medical necessity criteria requirements`,
+      { type: 'policy' },
+      10,
+      0.25
+    );
+  }
 
   if (policyChunks.length === 0) {
     return { criteria: [], policyChunks: [] };
