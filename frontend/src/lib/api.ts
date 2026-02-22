@@ -1,15 +1,18 @@
 import type {
-  Patient,
-  Procedure,
   EvaluateRequest,
   EvaluationResult,
   EvaluationRun,
+  Patient,
+  PatientProfile,
+  Procedure,
 } from "./types";
 
 let useMock = false;
 
 export const isMockMode = () => useMock;
-export const setMockMode = (v: boolean) => { useMock = v; };
+export const setMockMode = (v: boolean) => {
+  useMock = v;
+};
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -31,8 +34,6 @@ async function readError(res: Response, fallback: string): Promise<string> {
   }
   return res.statusText || fallback;
 }
-
-// ── Mock Data ──────────────────────────────────────────
 
 const MOCK_PATIENTS: Patient[] = [
   { id: "p1", name: "Sarah Johnson", dob: "1985-03-14", payer: "Aetna" },
@@ -80,7 +81,110 @@ const MOCK_RESULT: EvaluationResult = {
   ],
 };
 
-// ── API Functions ──────────────────────────────────────
+function toMockProfile(patient: Patient): PatientProfile {
+  const [first, ...rest] = patient.name.split(" ");
+  return {
+    patient: {
+      id: patient.id,
+      first_name: first,
+      last_name: rest.join(" "),
+      dob: patient.dob,
+      mrn: `MRN-${patient.id.toUpperCase()}`,
+    },
+    coverage: [
+      {
+        id: `cov-${patient.id}`,
+        payer: patient.payer,
+        member_id: `MEM-${patient.id.toUpperCase()}`,
+        plan_name: "PPO Gold",
+        is_active: true,
+      },
+    ],
+    documents: [
+      {
+        filename: `${patient.id}_progress_note.pdf`,
+        record_type: "Progress Note",
+        date: "2026-02-10",
+      },
+      {
+        filename: `${patient.id}_imaging_report.pdf`,
+        record_type: "Imaging",
+        date: "2026-01-28",
+      },
+    ],
+  };
+}
+
+export async function getAllPatients(): Promise<Patient[]> {
+  if (useMock) {
+    await delay(250);
+    return [...MOCK_PATIENTS];
+  }
+
+  const res = await fetch(toUrl("/api/patients"));
+  if (!res.ok) {
+    throw new Error(await readError(res, "Failed to fetch patients"));
+  }
+
+  const rows = (await res.json()) as Array<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    dob: string;
+    payer?: string | null;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: `${row.first_name} ${row.last_name}`.trim(),
+    dob: row.dob,
+    payer: row.payer ?? "Unknown",
+  }));
+}
+
+export async function getPatientProfile(patientId: string): Promise<PatientProfile> {
+  if (useMock) {
+    await delay(200);
+    const patient = MOCK_PATIENTS.find((row) => row.id === patientId);
+    if (!patient) {
+      throw new Error("Patient not found");
+    }
+    return toMockProfile(patient);
+  }
+
+  const res = await fetch(toUrl(`/api/patients/${patientId}`));
+  if (!res.ok) {
+    throw new Error(await readError(res, "Failed to fetch patient profile"));
+  }
+
+  const body = (await res.json()) as {
+    patient: {
+      id: string;
+      first_name: string;
+      last_name: string;
+      dob: string;
+      mrn?: string | null;
+    };
+    coverage: Array<{
+      id: string;
+      payer: string;
+      member_id?: string | null;
+      plan_name?: string | null;
+      is_active: boolean;
+    }>;
+    documents: Array<{
+      filename: string;
+      record_type: string;
+      date: string | null;
+    }>;
+  };
+
+  return {
+    patient: body.patient,
+    coverage: body.coverage ?? [],
+    documents: body.documents ?? [],
+  };
+}
 
 export async function searchPatients(query: string): Promise<Patient[]> {
   if (useMock) {
@@ -92,7 +196,7 @@ export async function searchPatients(query: string): Promise<Patient[]> {
   if (!res.ok) {
     throw new Error(await readError(res, "Failed to search patients"));
   }
-  const rows = await res.json() as Array<{
+  const rows = (await res.json()) as Array<{
     id: string;
     first_name: string;
     last_name: string;
@@ -111,15 +215,13 @@ export async function searchProcedures(query: string): Promise<Procedure[]> {
   if (useMock) {
     await delay(200);
     const q = query.toLowerCase();
-    return MOCK_PROCEDURES.filter(
-      (p) => p.label.toLowerCase().includes(q) || p.cptCode.includes(q)
-    );
+    return MOCK_PROCEDURES.filter((p) => p.label.toLowerCase().includes(q) || p.cptCode.includes(q));
   }
   const res = await fetch(toUrl(`/api/cpt/search?q=${encodeURIComponent(query)}`));
   if (!res.ok) {
     throw new Error(await readError(res, "Failed to search procedures"));
   }
-  const rows = await res.json() as Array<{
+  const rows = (await res.json()) as Array<{
     code: string;
     description: string;
   }>;
@@ -144,7 +246,7 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
     throw new Error(await readError(triggerRes, "Evaluation failed"));
   }
 
-  const trigger = await triggerRes.json() as { determination_id: string };
+  const trigger = (await triggerRes.json()) as { determination_id: string };
   const timeoutMs = 35_000;
   const intervalMs = 1_200;
   const start = Date.now();
@@ -155,7 +257,7 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
     if (!pollRes.ok) {
       throw new Error(await readError(pollRes, "Failed to poll evaluation"));
     }
-    const poll = await pollRes.json() as {
+    const poll = (await pollRes.json()) as {
       status: "pending" | "error" | "complete";
       message?: string;
       probability_score?: number;
@@ -187,8 +289,7 @@ export async function evaluate(req: EvaluateRequest): Promise<EvaluationResult> 
         determinationId: trigger.determination_id,
         verdict,
         probability: Math.round((poll.probability_score ?? 0) * 100),
-        reasons:
-          poll.criteria_results?.map((c) => c.reasoning).filter((v): v is string => Boolean(v)) ?? [],
+        reasons: poll.criteria_results?.map((c) => c.reasoning).filter((v): v is string => Boolean(v)) ?? [],
         missingInfo: poll.missing_info ?? [],
         evidence:
           poll.criteria_results
@@ -278,7 +379,7 @@ export async function getEvaluationRuns(): Promise<EvaluationRun[]> {
     throw new Error(await readError(res, "Failed to fetch evaluation runs"));
   }
 
-  const rows = await res.json() as Array<{
+  const rows = (await res.json()) as Array<{
     determination_id: string;
     patient_id: string;
     patient_name: string;
@@ -321,7 +422,7 @@ export async function getEvaluationById(determinationId: string): Promise<Evalua
     throw new Error(await readError(res, "Failed to fetch evaluation details"));
   }
 
-  const poll = await res.json() as {
+  const poll = (await res.json()) as {
     status: "pending" | "error" | "complete";
     message?: string;
     probability_score?: number;
@@ -354,8 +455,7 @@ export async function getEvaluationById(determinationId: string): Promise<Evalua
     determinationId,
     verdict,
     probability: Math.round((poll.probability_score ?? 0) * 100),
-    reasons:
-      poll.criteria_results?.map((c) => c.reasoning).filter((v): v is string => Boolean(v)) ?? [],
+    reasons: poll.criteria_results?.map((c) => c.reasoning).filter((v): v is string => Boolean(v)) ?? [],
     missingInfo: poll.missing_info ?? [],
     evidence:
       poll.criteria_results
