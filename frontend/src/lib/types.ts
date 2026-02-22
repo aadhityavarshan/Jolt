@@ -47,12 +47,18 @@ export interface EvidenceQuote {
   page?: number;
 }
 
+export interface ReasonWithEvidence {
+  reasoning: string;
+  evidence: EvidenceQuote | null;
+}
+
 export interface EvaluationResult {
   determinationId: string;
   verdict: Verdict;
   probability: number;
-  reasons: string[];
+  reasons: ReasonWithEvidence[];
   missingInfo: string[];
+  /** @deprecated Use evidence on each reason instead */
   evidence: EvidenceQuote[];
 }
 
@@ -61,6 +67,7 @@ export interface EvaluationRun {
   patientId: string;
   patientName: string;
   cptCode: string;
+  procedureDescription: string | null;
   payer: string;
   status: "pending" | "complete" | "error" | string;
   requestedAt: string;

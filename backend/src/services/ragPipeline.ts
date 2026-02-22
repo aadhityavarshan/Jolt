@@ -142,7 +142,7 @@ Return a JSON object with:
 - "confidence": number 0-1 — how confident are you?
 - "evidence_quote": string or null — exact quote from clinical records supporting your decision
 - "chunk_number": number or null — which chunk number (1-${clinicalChunks.length}) contains the evidence
-- "reasoning": string — brief explanation of your decision
+- "reasoning": string — 2-3 concise bullet points (each on its own line, starting with "•") summarizing why the criterion is or is not met
 
 Return ONLY the JSON object, no other text.`,
       },

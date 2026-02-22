@@ -1,13 +1,13 @@
 import { useState } from "react";
-import type { EvaluationResult, Verdict } from "@/lib/types";
+import type { EvaluationResult, ReasonWithEvidence, Verdict } from "@/lib/types";
 import { downloadLetter } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import EvidenceQuoteCard from "./EvidenceQuoteCard";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, AlertTriangle, XCircle, FileText, AlertCircle, BookOpen, Download, Loader2, ChevronDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CheckCircle2, AlertTriangle, XCircle, FileText, AlertCircle, Download, Loader2, ChevronDown, Quote } from "lucide-react";
 import { categorizeReasons, groupReasonsByCategory, categoryConfig } from "@/lib/reasonCategories";
 
 interface Props {
@@ -32,6 +32,90 @@ const verdictConfig: Record<Verdict, { label: string; className: string; icon: R
   },
 };
 
+function ReasonBullets({ text }: { text: string }) {
+  if (text.includes("•")) {
+    const lines = text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return (
+      <ul className="list-none space-y-1">
+        {lines.map((line, j) => (
+          <li key={j} className="flex items-start gap-1.5">
+            {line.startsWith("•") ? (
+              <>
+                <span className="mt-0.5 shrink-0">•</span>
+                <span>{line.replace(/^•\s*/, "")}</span>
+              </>
+            ) : (
+              <span>{line}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return <span>{text}</span>;
+}
+
+function ReasonCard({
+  reason,
+  categorized,
+}: {
+  reason: ReasonWithEvidence;
+  categorized: { category: keyof typeof categoryConfig };
+}) {
+  const config = categoryConfig[categorized.category];
+  const hasEvidence = reason.evidence !== null;
+
+  const content = (
+    <div
+      className={`p-3 rounded-md text-sm ${config.bgColor} ${
+        hasEvidence ? "cursor-pointer hover:opacity-80 transition-opacity" : ""
+      }`}
+    >
+      <div className="text-muted-foreground leading-relaxed">
+        <ReasonBullets text={reason.reasoning} />
+      </div>
+      <div className="flex items-center gap-2 mt-2">
+        <Badge variant="secondary" className={`text-xs ${config.color}`}>
+          {config.label}
+        </Badge>
+        {hasEvidence && (
+          <span className="text-xs text-muted-foreground/60 flex items-center gap-1">
+            <Quote className="h-3 w-3" /> Click for evidence
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
+  if (!hasEvidence) return content;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>{content}</PopoverTrigger>
+      <PopoverContent className="w-96" side="bottom" align="start">
+        <div className="space-y-3">
+          <div className="flex items-start gap-2">
+            <Quote className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+            <p className="text-sm italic leading-relaxed">
+              "{reason.evidence!.text}"
+            </p>
+          </div>
+          <Separator />
+          <p className="text-xs text-muted-foreground">
+            {reason.evidence!.source}
+            {reason.evidence!.page != null && (
+              <span> · Page {reason.evidence!.page}</span>
+            )}
+          </p>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function EvaluateResults({ result }: Props) {
   const v = verdictConfig[result.verdict];
   const [letterLoading, setLetterLoading] = useState(false);
@@ -40,8 +124,8 @@ export default function EvaluateResults({ result }: Props) {
 
   const categorizedReasons = categorizeReasons(result.reasons);
   const groupedReasons = groupReasonsByCategory(categorizedReasons);
-  const reasonsWithCategory = categorizedReasons.filter((r) => r.category !== "other");
   const maxInitialReasons = 3;
+  const evidenceCount = result.reasons.filter((r) => r.evidence !== null).length;
 
   const handleDownloadLetter = async () => {
     setLetterLoading(true);
@@ -115,7 +199,7 @@ export default function EvaluateResults({ result }: Props) {
           <Card className="border-muted">
             <CardContent className="pt-4">
               <p className="text-xs text-muted-foreground">Evidence Quotes</p>
-              <p className="text-sm font-medium">{result.evidence.length}</p>
+              <p className="text-sm font-medium">{evidenceCount}</p>
             </CardContent>
           </Card>
         </div>
@@ -153,36 +237,18 @@ export default function EvaluateResults({ result }: Props) {
           <CardContent className="space-y-3">
               {result.reasons.length > 0 ? (
                 <>
-                  {/* Show initial reasons or all if expanded */}
                   <div className="space-y-2">
                     {result.reasons
                       .slice(0, expandedReasons ? undefined : maxInitialReasons)
-                      .map((reason, i) => {
-                        const categorized = categorizedReasons[i];
-                        const config = categoryConfig[categorized.category];
-                        return (
-                          <div
-                            key={i}
-                            className={`p-3 rounded-md text-sm ${config.bgColor}`}
-                          >
-                            <div className="flex items-start gap-2">
-                              <span className="text-lg mt-0.5">{config.icon}</span>
-                              <span className="text-muted-foreground leading-relaxed">
-                                {reason}
-                              </span>
-                            </div>
-                            <Badge
-                              variant="secondary"
-                              className={`mt-2 text-xs ${config.color}`}
-                            >
-                              {config.label}
-                            </Badge>
-                          </div>
-                        );
-                      })}
+                      .map((reason, i) => (
+                        <ReasonCard
+                          key={i}
+                          reason={reason}
+                          categorized={categorizedReasons[i]}
+                        />
+                      ))}
                   </div>
 
-                  {/* Show More / Show Less button */}
                   {result.reasons.length > maxInitialReasons && (
                     <Button
                       variant="ghost"
@@ -201,7 +267,6 @@ export default function EvaluateResults({ result }: Props) {
                     </Button>
                   )}
 
-                  {/* Summary stats */}
                   {result.reasons.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-muted-foreground/10">
                       <div className="grid grid-cols-2 gap-2">
@@ -212,7 +277,6 @@ export default function EvaluateResults({ result }: Props) {
                             return (
                               <div key={category} className="text-xs">
                                 <p className="text-muted-foreground">
-                                  {categoryConfig[cat].icon}{" "}
                                   {categoryConfig[cat].label}
                                 </p>
                                 <p className="font-semibold text-foreground">
@@ -232,25 +296,6 @@ export default function EvaluateResults({ result }: Props) {
               )}
             </CardContent>
           </Card>
-
-        <div className="space-y-3">
-          <h4 className="text-sm font-semibold flex items-center gap-1.5">
-            <BookOpen className="h-3.5 w-3.5 text-primary" /> Evidence
-          </h4>
-          {result.evidence.length > 0 ? (
-            <div className="space-y-2">
-              {result.evidence.map((e, i) => (
-                <EvidenceQuoteCard key={i} quote={e} />
-              ))}
-            </div>
-          ) : (
-            <Card className="border-muted">
-              <CardContent className="pt-4">
-                <p className="text-sm text-muted-foreground">No evidence quotes were returned for this evaluation.</p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
       </CardContent>
     </Card>
   );

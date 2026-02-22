@@ -26,6 +26,19 @@ router.get('/', async (_req: Request, res: Response) => {
 
     if (error) throw error;
 
+    // Fetch CPT descriptions for all unique codes
+    const uniqueCptCodes = [...new Set((requests ?? []).map((r: any) => r.cpt_code))];
+    const cptDescMap = new Map<string, string>();
+    if (uniqueCptCodes.length > 0) {
+      const { data: cptRows } = await supabase
+        .from('cpt_codes')
+        .select('code, description')
+        .in('code', uniqueCptCodes);
+      for (const row of cptRows ?? []) {
+        cptDescMap.set(row.code, row.description);
+      }
+    }
+
     const runs = (requests ?? []).map((row: any) => {
       const patient = Array.isArray(row.patients) ? row.patients[0] : row.patients;
       const determination = Array.isArray(row.determinations)
@@ -37,6 +50,7 @@ router.get('/', async (_req: Request, res: Response) => {
         patient_id: row.patient_id,
         patient_name: patient ? `${patient.first_name ?? ''} ${patient.last_name ?? ''}`.trim() : 'Unknown Patient',
         cpt_code: row.cpt_code,
+        procedure_description: cptDescMap.get(row.cpt_code) ?? null,
         payer: row.payer,
         status: row.status,
         requested_at: row.created_at,
