@@ -6,6 +6,8 @@ Prior authorization is one of the biggest bottlenecks in modern healthcare — a
 
 Built at **Hacklytics 2026** — Georgia Tech's annual data science hackathon.
 
+https://jolt-gray.vercel.app/
+
 ---
 
 ## How It Works
