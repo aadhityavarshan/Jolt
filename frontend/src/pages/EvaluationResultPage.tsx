@@ -151,7 +151,7 @@ export default function EvaluationResultPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
+      <header className="border-b bg-card animate-fade-in">
         <div className="mx-auto max-w-[1100px] px-6 py-4 flex items-center gap-4">
           <div className="flex items-center gap-3">
             <SidebarTrigger />
@@ -179,7 +179,7 @@ export default function EvaluationResultPage() {
 
         {selectedRun ? (
           <>
-            <Card>
+            <Card className="animate-fade-in-up stagger-1">
               <CardContent className="pt-6 flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">Patient: {selectedRun.patientName}</Badge>
                 <Badge variant="secondary">Payer: {selectedRun.payer}</Badge>
@@ -190,7 +190,7 @@ export default function EvaluationResultPage() {
             </Card>
 
             {selectedRun.status !== "complete" ? (
-              <Card>
+              <Card className="animate-fade-in-up stagger-2">
                 <CardContent className="pt-6">
                   <p className="text-sm text-muted-foreground">
                     This run is currently {selectedRun.status}. Full evaluation sections are shown once the run is complete.
@@ -198,13 +198,13 @@ export default function EvaluationResultPage() {
                 </CardContent>
               </Card>
             ) : isSelectedRunLoading ? (
-              <Card>
+              <Card className="animate-fade-in-up stagger-2">
                 <CardContent className="pt-6 flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> Loading selected run details...
                 </CardContent>
               </Card>
             ) : isSelectedRunError ? (
-              <Card>
+              <Card className="animate-fade-in-up stagger-2">
                 <CardContent className="pt-6">
                   <p className="text-sm text-destructive">
                     {selectedRunError instanceof Error
@@ -214,12 +214,14 @@ export default function EvaluationResultPage() {
                 </CardContent>
               </Card>
             ) : selectedRunResult ? (
-              <EvaluateResults result={selectedRunResult} />
+              <div className="animate-fade-in-up stagger-2">
+                <EvaluateResults result={selectedRunResult} />
+              </div>
             ) : null}
           </>
         ) : result && patient && procedure ? (
           <>
-            <Card>
+            <Card className="animate-fade-in-up stagger-1">
               <CardContent className="pt-6 flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">Patient: {patient.name}</Badge>
                 <Badge variant="secondary">Payer: {patient.payer}</Badge>
@@ -231,10 +233,12 @@ export default function EvaluationResultPage() {
               </CardContent>
             </Card>
 
-            <EvaluateResults result={result} />
+            <div className="animate-fade-in-up stagger-2">
+              <EvaluateResults result={result} />
+            </div>
           </>
         ) : (
-          <Card>
+          <Card className="animate-fade-in-up stagger-1">
             <CardHeader>
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <FileCheck2 className="h-4 w-4 text-primary" />
@@ -250,7 +254,7 @@ export default function EvaluationResultPage() {
         )}
 
         {!selectedRunId && (
-        <Card>
+        <Card className="animate-fade-in-up stagger-2">
           <CardHeader>
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <Clock3 className="h-4 w-4 text-primary" />

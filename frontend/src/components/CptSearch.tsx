@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Stethoscope } from "lucide-react";
+import { Stethoscope, X } from "lucide-react";
 import AnatomyHighlighter from "./AnatomyHighlighter";
 import { getProcedureDescription } from "@/lib/procedureDescriptions";
 
@@ -25,11 +25,22 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
   const [helpOpen, setHelpOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const { data: results = [] } = useQuery({
+  // Fetch all procedures once on mount
+  const { data: allProcedures = [] } = useQuery({
+    queryKey: ["procedures", "all"],
+    queryFn: () => searchProcedures(""),
+    staleTime: Infinity,
+  });
+
+  // Filtered search results when user types
+  const { data: searchResults = [] } = useQuery({
     queryKey: ["procedures", query],
     queryFn: () => searchProcedures(query),
     enabled: query.length >= 2,
   });
+
+  // Show all procedures when no query, or search results when typing
+  const displayResults = query.length >= 2 ? searchResults : allProcedures;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -50,26 +61,42 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
       <CardContent className="space-y-4 overflow-visible">
         {/* CPT Search */}
         <div className="relative z-50" ref={ref}>
-          <Input
-            placeholder="Search by CPT code or procedure name..."
-            value={query}
-            onChange={(e) => {
-              const nextQuery = e.target.value;
-              setQuery(nextQuery);
-              setOpen(true);
+          <div className="relative">
+            <Input
+              placeholder="Search by CPT code or procedure name..."
+              value={query}
+              onChange={(e) => {
+                const nextQuery = e.target.value;
+                setQuery(nextQuery);
+                setOpen(true);
 
-              if (selected) {
-                const selectedText = `${selected.label} (CPT ${selected.cptCode})`;
-                if (nextQuery !== selectedText) {
-                  onClearSelection?.();
+                if (selected) {
+                  const selectedText = `${selected.label} (CPT ${selected.cptCode})`;
+                  if (nextQuery !== selectedText) {
+                    onClearSelection?.();
+                  }
                 }
-              }
-            }}
-            onFocus={() => query.length >= 2 && setOpen(true)}
-          />
-          {open && results.length > 0 && (
+              }}
+              onFocus={() => setOpen(true)}
+              className="pr-8"
+            />
+            {query && (
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => {
+                  setQuery("");
+                  setOpen(false);
+                  onClearSelection?.();
+                }}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          {open && displayResults.length > 0 && (
             <div className="absolute z-50 mt-2 w-full rounded-md border bg-popover shadow-xl animate-slide-down max-h-56 overflow-y-auto">
-              {results.map((p) => (
+              {displayResults.map((p) => (
                 <button
                   key={p.cptCode}
                   className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors first:rounded-t-md last:rounded-b-md text-sm"
@@ -136,7 +163,7 @@ export default function CPTSearch({ selected, laterality, onSelect, onLaterality
 
                 {/* Anatomy View */}
                 <div className="border-t pt-6">
-                  <AnatomyHighlighter procedureLabel={selected.label} />
+                  <AnatomyHighlighter procedureLabel={selected.label} cptCode={selected.cptCode} />
                 </div>
               </div>
             )}

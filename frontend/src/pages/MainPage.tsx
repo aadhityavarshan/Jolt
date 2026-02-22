@@ -63,7 +63,6 @@ export default function MainPage() {
   } = useQuery({
     queryKey: ["evaluation-runs"],
     queryFn: getEvaluationRuns,
-    enabled: Boolean(selectedPatientId),
   });
 
   const evaluationPatient = useMemo<Patient | null>(() => {
@@ -146,21 +145,53 @@ export default function MainPage() {
     return Array.from(unique).sort((a, b) => a.localeCompare(b));
   }, [patients]);
 
+  // Build a map of patientId → most recent evaluation timestamp
+  const lastEvalAt = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const run of runs) {
+      const t = new Date(run.requestedAt).getTime();
+      if (!Number.isNaN(t)) {
+        const existing = map.get(run.patientId);
+        if (existing === undefined || t > existing) map.set(run.patientId, t);
+      }
+    }
+    return map;
+  }, [runs]);
+
   const filteredPatients = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return patients.filter((patient) => {
-      const matchesSearch =
-        normalizedSearch.length === 0 ||
-        patient.name.toLowerCase().includes(normalizedSearch) ||
-        patient.id.toLowerCase().includes(normalizedSearch) ||
-        patient.dob.toLowerCase().includes(normalizedSearch);
+    return patients
+      .filter((patient) => {
+        const matchesSearch =
+          normalizedSearch.length === 0 ||
+          patient.name.toLowerCase().includes(normalizedSearch) ||
+          patient.id.toLowerCase().includes(normalizedSearch) ||
+          patient.dob.toLowerCase().includes(normalizedSearch);
 
-      const matchesPayer = payerFilter === "all" || patient.payer === payerFilter;
+        const matchesPayer = payerFilter === "all" || patient.payer === payerFilter;
 
-      return matchesSearch && matchesPayer;
-    });
-  }, [patients, payerFilter, searchTerm]);
+        return matchesSearch && matchesPayer;
+      })
+      .sort((a, b) => {
+        const aTime = lastEvalAt.get(a.id) ?? 0;
+        const bTime = lastEvalAt.get(b.id) ?? 0;
+        if (bTime !== aTime) return bTime - aTime;
+        return a.name.localeCompare(b.name);
+      });
+  }, [patients, payerFilter, searchTerm, lastEvalAt]);
+
+  const relativeTime = (ts: number) => {
+    const diff = Date.now() - ts;
+    const mins = Math.floor(diff / 60_000);
+    const hours = Math.floor(diff / 3_600_000);
+    const days = Math.floor(diff / 86_400_000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 30) return `${days}d ago`;
+    return new Date(ts).toLocaleDateString();
+  };
 
   const formatDate = (value: string | null | undefined) => {
     if (!value) return "-";
@@ -194,7 +225,7 @@ export default function MainPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
+      <header className="border-b bg-card animate-fade-in">
         <div className="mx-auto max-w-[1100px] px-6 py-4 flex items-center gap-4">
           <div className="flex items-center gap-3">
             <SidebarTrigger />
@@ -223,7 +254,7 @@ export default function MainPage() {
         {selectedPatientId ? (
           <>
             {selectedPatient && (
-              <Card>
+              <Card className="animate-fade-in-up stagger-1">
                 <CardContent className="pt-6 flex flex-wrap items-center gap-2">
                   <Badge variant="secondary">Patient: {selectedPatient.name}</Badge>
                   <Badge variant="secondary">DOB: {formatDate(selectedPatient.dob)}</Badge>
@@ -249,7 +280,7 @@ export default function MainPage() {
               </Card>
             ) : profile ? (
               <>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in-up stagger-2">
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -287,7 +318,7 @@ export default function MainPage() {
                   </Card>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in-up stagger-3 relative z-10 overflow-visible">
                   <CPTSearch
                     selected={procedure}
                     laterality={laterality}
@@ -341,7 +372,7 @@ export default function MainPage() {
                   </Card>
                 </div>
 
-                <Card>
+                <Card className="animate-fade-in-up stagger-4">
                   <CardHeader>
                     <CardTitle className="text-base font-semibold flex items-center gap-2">
                       <Clock3 className="h-4 w-4 text-primary" />
@@ -386,7 +417,7 @@ export default function MainPage() {
 
             {profile && (
               <>
-                <Card>
+                <Card className="animate-fade-in-up stagger-5">
                   <CardHeader>
                     <CardTitle className="text-base font-semibold flex items-center gap-2">
                       <FileText className="h-4 w-4 text-primary" />
@@ -456,7 +487,7 @@ export default function MainPage() {
             )}
           </>
         ) : (
-          <Card>
+          <Card className="animate-fade-in-up stagger-1">
             <CardHeader>
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <Clock3 className="h-4 w-4 text-primary" />
@@ -576,8 +607,17 @@ export default function MainPage() {
                   }}
                 >
                   <CardContent className="pt-4">
-                    <p className="text-sm font-semibold mb-1">{patient.name}</p>
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <p className="text-sm font-semibold">{patient.name}</p>
+                      {lastEvalAt.has(patient.id) ? (
+                        <span className="text-xs text-muted-foreground shrink-0 flex items-center gap-1">
+                          <Clock3 className="h-3 w-3" /> {relativeTime(lastEvalAt.get(patient.id)!)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/50 shrink-0">No evaluations</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="secondary">Payer: {patient.payer}</Badge>
                       <Badge variant="secondary">DOB: {formatDate(patient.dob)}</Badge>
                       <Badge variant="outline">ID: {patient.id}</Badge>

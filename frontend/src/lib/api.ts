@@ -220,6 +220,7 @@ export async function searchPatients(query: string): Promise<Patient[]> {
 export async function searchProcedures(query: string): Promise<Procedure[]> {
   if (useMock) {
     await delay(200);
+    if (!query) return MOCK_PROCEDURES;
     const q = query.toLowerCase();
     return MOCK_PROCEDURES.filter((p) => p.label.toLowerCase().includes(q) || p.cptCode.includes(q));
   }
