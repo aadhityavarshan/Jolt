@@ -20,7 +20,8 @@ type BodyRegion =
   | "spine"
   | "heart"
   | "lungs"
-  | "eyes";
+  | "eyes"
+  | "wholeBody";
 
 type AnatomyModel = "skeleton" | "organs";
 
@@ -42,6 +43,7 @@ const REGION_LABELS: Record<BodyRegion, string> = {
   heart: "Heart",
   lungs: "Lungs",
   eyes: "Eyes",
+  wholeBody: "Whole Body",
 };
 
 // ── CPT codes that target organs (show organs model) ─────────────────
@@ -102,7 +104,7 @@ function pickModel(cptCode: string | undefined, regions: Set<BodyRegion>, label:
 const SKELETON_OVERLAYS: Record<BodyRegion, { top: number; left: number; width: number; height: number; borderRadius?: string }> = {
   head:      { top: 0,   left: 33, width: 34, height: 12, borderRadius: "50%" },
   eyes:      { top: 4.5, left: 38, width: 24, height: 3,  borderRadius: "30%" },
-  neck:      { top: 11,  left: 40, width: 20, height: 5,  borderRadius: "20%" },
+  neck:      { top: 11,  left: 3, width: 20, height: 5,  borderRadius: "20%" },
   shoulders: { top: 16,  left: 16, width: 64, height: 6,  borderRadius: "10%" },
   chest:     { top: 18,  left: 30, width: 40, height: 14, borderRadius: "10%" },
   heart:     { top: 20,  left: 40, width: 16, height: 8,  borderRadius: "50%" },
@@ -117,13 +119,14 @@ const SKELETON_OVERLAYS: Record<BodyRegion, { top: number; left: number; width: 
   knees:     { top: 64,  left: 28, width: 44, height: 8,  borderRadius: "40%" },
   shins:     { top: 71,  left: 28, width: 44, height: 16, borderRadius: "10%" },
   feet:      { top: 87,  left: 24, width: 52, height: 10, borderRadius: "10%" },
+  wholeBody: { top: 0,   left: 4,  width: 92, height: 98, borderRadius: "10%" },
 };
 
 // ── Overlay positions for ORGANS image ───────────────────────────────
 const ORGANS_OVERLAYS: Record<BodyRegion, { top: number; left: number; width: number; height: number; borderRadius?: string }> = {
   head:      { top: 0,   left: 33, width: 34, height: 12, borderRadius: "50%" },
-  eyes:      { top: 4.5, left: 38, width: 24, height: 3,  borderRadius: "30%" },
-  neck:      { top: 11,  left: 40, width: 20, height: 5,  borderRadius: "20%" },
+  eyes:      { top: 5.5, left: 40, width: 24, height: 3,  borderRadius: "30%" },
+  neck:      { top: 11,  left: 42, width: 20, height: 5,  borderRadius: "20%" },
   shoulders: { top: 14,  left: 18, width: 64, height: 6,  borderRadius: "10%" },
   chest:     { top: 18,  left: 28, width: 44, height: 14, borderRadius: "10%" },
   heart:     { top: 25,  left: 48, width: 13, height: 7,  borderRadius: "50%" },
@@ -138,6 +141,7 @@ const ORGANS_OVERLAYS: Record<BodyRegion, { top: number; left: number; width: nu
   knees:     { top: 66,  left: 28, width: 44, height: 8,  borderRadius: "40%" },
   shins:     { top: 73,  left: 28, width: 44, height: 14, borderRadius: "10%" },
   feet:      { top: 87,  left: 24, width: 52, height: 10, borderRadius: "10%" },
+  wholeBody: { top: 0,   left: 4,  width: 92, height: 98, borderRadius: "10%" },
 };
 
 // ── Keyword → region mapping ─────────────────────────────────────────
@@ -181,7 +185,7 @@ const CPT_REGION_MAP: Record<string, BodyRegion[]> = {
   "72148": ["spine"],
   "74177": ["abdomen", "pelvis"],
   "71260": ["chest", "lungs"],
-  "78816": ["head", "chest", "abdomen", "pelvis", "thighs", "shins"],
+  "78816": ["wholeBody"],
   "77067": ["chest"],
   "96413": ["chest"],
   "96417": ["chest"],
