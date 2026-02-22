@@ -5,6 +5,32 @@ export interface Patient {
   payer: string;
 }
 
+export interface CoverageRecord {
+  id: string;
+  payer: string;
+  member_id?: string | null;
+  plan_name?: string | null;
+  is_active: boolean;
+}
+
+export interface PatientDocument {
+  filename: string;
+  record_type: string;
+  date: string | null;
+}
+
+export interface PatientProfile {
+  patient: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    dob: string;
+    mrn?: string | null;
+  };
+  coverage: CoverageRecord[];
+  documents: PatientDocument[];
+}
+
 export interface Procedure {
   cptCode: string;
   label: string;

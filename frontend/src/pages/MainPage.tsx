@@ -1,120 +1,481 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import type { Patient, Procedure, Laterality } from "@/lib/types";
-import { evaluate, isMockMode, setMockMode } from "@/lib/api";
-import PatientSearch from "@/components/PatientSearch";
+import { evaluate, getAllPatients, getEvaluationRuns, getPatientProfile } from "@/lib/api";
+import type { Laterality, Patient, Procedure } from "@/lib/types";
 import CPTSearch from "@/components/CptSearch";
-import AnatomyHighlighter from "@/components/AnatomyHighlighter";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ArrowLeft, Clock3, FileText, Loader2, Search, UserRound } from "lucide-react";
 
 export default function MainPage() {
   const navigate = useNavigate();
-  const [patient, setPatient] = useState<Patient | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [payerFilter, setPayerFilter] = useState<string>("all");
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [procedure, setProcedure] = useState<Procedure | null>(null);
   const [laterality, setLaterality] = useState<Laterality>("both");
-  const [mock, setMock] = useState(isMockMode());
 
-  const mutation = useMutation({
+  const {
+    data: patients = [],
+    isLoading: isPatientsLoading,
+    isError: isPatientsError,
+  } = useQuery({
+    queryKey: ["patients-all"],
+    queryFn: getAllPatients,
+  });
+
+  const selectedPatient = useMemo(
+    () => (selectedPatientId ? patients.find((patient) => patient.id === selectedPatientId) ?? null : null),
+    [patients, selectedPatientId],
+  );
+
+  const {
+    data: profile,
+    isLoading: isProfileLoading,
+    isError: isProfileError,
+    error: profileError,
+  } = useQuery({
+    queryKey: ["patient-profile", selectedPatientId],
+    queryFn: () => getPatientProfile(selectedPatientId as string),
+    enabled: Boolean(selectedPatientId),
+  });
+
+  const {
+    data: runs = [],
+    isLoading: isRunsLoading,
+    isError: isRunsError,
+  } = useQuery({
+    queryKey: ["evaluation-runs"],
+    queryFn: getEvaluationRuns,
+    enabled: Boolean(selectedPatientId),
+  });
+
+  const evaluationPatient = useMemo<Patient | null>(() => {
+    if (selectedPatient) return selectedPatient;
+    if (!profile) return null;
+
+    const payerFromCoverage = profile.coverage[0]?.payer ?? "Unknown";
+    return {
+      id: profile.patient.id,
+      name: `${profile.patient.first_name} ${profile.patient.last_name}`.trim(),
+      dob: profile.patient.dob,
+      payer: payerFromCoverage,
+    };
+  }, [profile, selectedPatient]);
+
+  const mostRecentRun = useMemo(() => {
+    if (!selectedPatientId) return null;
+
+    const patientRuns = runs.filter((run) => run.patientId === selectedPatientId);
+    if (patientRuns.length === 0) return null;
+
+    return patientRuns.sort((a, b) => {
+      const aTime = new Date(a.requestedAt).getTime();
+      const bTime = new Date(b.requestedAt).getTime();
+      return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+    })[0];
+  }, [runs, selectedPatientId]);
+
+  const dedupedDocuments = useMemo(() => {
+    if (!profile) return [];
+    const seen = new Set<string>();
+
+    return profile.documents.filter((document) => {
+      if (seen.has(document.filename)) return false;
+      seen.add(document.filename);
+      return true;
+    });
+  }, [profile]);
+
+  const evaluateMutation = useMutation({
     mutationFn: evaluate,
     onSuccess: (data) => {
-      if (!patient || !procedure) return;
+      if (!evaluationPatient || !procedure) return;
+
       navigate("/results", {
         state: {
           result: data,
-          patient,
+          patient: evaluationPatient,
           procedure,
           laterality,
         },
       });
-    }
+    },
   });
 
-  const canEvaluate = patient !== null && procedure !== null;
+  const payerOptions = useMemo(() => {
+    const unique = new Set(patients.map((patient) => patient.payer).filter(Boolean));
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [patients]);
 
-  const handleEvaluate = () => {
-    if (!canEvaluate) return;
-    mutation.mutate({
-      patient_id: patient.id,
-      cpt_code: procedure.cptCode,
-      payer: patient.payer
+  const filteredPatients = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return patients.filter((patient) => {
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        patient.name.toLowerCase().includes(normalizedSearch) ||
+        patient.id.toLowerCase().includes(normalizedSearch) ||
+        patient.dob.toLowerCase().includes(normalizedSearch);
+
+      const matchesPayer = payerFilter === "all" || patient.payer === payerFilter;
+
+      return matchesSearch && matchesPayer;
+    });
+  }, [patients, payerFilter, searchTerm]);
+
+  const formatDate = (value: string | null | undefined) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+  };
+
+  const formatDateTime = (value: string | null | undefined) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  };
+
+  const recommendationLabel = (value: string | null) => {
+    if (value === "LIKELY_APPROVED") return "Likely Approved";
+    if (value === "LIKELY_DENIED") return "Likely Denied";
+    if (value === "INSUFFICIENT_INFO") return "Insufficient Info";
+    return "-";
+  };
+
+  const handleSelectPatient = (patient: Patient) => {
+    setSelectedPatientId(patient.id);
+    setProcedure(null);
+    setLaterality("both");
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
     });
   };
 
-  const toggleMock = (v: boolean) => {
-    setMock(v);
-    setMockMode(v);
-  };
+  const canEvaluate = Boolean(selectedPatientId && evaluationPatient && procedure);
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card animate-fade-in">
-        <div className="mx-auto max-w-[1100px] px-6 py-4 flex items-center">
+      <header className="border-b bg-card">
+        <div className="mx-auto max-w-[1100px] px-6 py-4 flex items-center gap-4">
           <div className="flex items-center gap-3">
             <SidebarTrigger />
             <div>
-              <p className="text-sm text-muted-foreground">Prior Authorization Pre-Check</p>
+              <h1 className="text-xl font-bold tracking-tight">Pre-Check Patients</h1>
+              <p className="text-sm text-muted-foreground">Browse patient profiles before running prior authorization checks</p>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="mx-auto max-w-[1100px] px-6 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left column: inputs */}
-          <div className="space-y-6">
-            <div className="animate-fade-in-up stagger-1">
-            <PatientSearch
-              selected={patient}
-              onSelect={(p) => {setPatient(p);}}
-              onClear={() => {setPatient(null);}} />
-            </div>
-
-            <div className="animate-fade-in-up stagger-2 relative z-20">
-            <CPTSearch
-              selected={procedure}
-              laterality={laterality}
-              onSelect={(p) => {setProcedure(p);}}
-              onLateralityChange={setLaterality}
-              onClearSelection={() => { setProcedure(null); }} />
-            </div>
-
+      <main className="mx-auto max-w-[1100px] px-6 py-6 space-y-6">
+        {selectedPatientId && (
+          <div>
             <Button
-              onClick={handleEvaluate}
-              disabled={!canEvaluate || mutation.isPending}
-              className="w-full h-11 animate-fade-in-up stagger-3 relative z-0 transition-all duration-200 hover:shadow-lg hover:shadow-primary/25 active:scale-[0.98]"
-              size="lg">
-
-              {mutation.isPending ?
-              <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Evaluating...
-                </span> :
-
-              "Evaluate"
-              }
+              size="default"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={() => setSelectedPatientId(null)}
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Patient List
             </Button>
-
-            {mutation.isError &&
-            <p className="text-sm text-destructive">
-                Evaluation failed. Please try again.
-              </p>
-            }
           </div>
+        )}
 
-          {/* Right column: anatomy */}
-          <div className="animate-fade-in-up stagger-2">
-            <AnatomyHighlighter
-              procedureLabel={procedure?.label ?? null} />
+        {selectedPatientId ? (
+          <>
+            {selectedPatient && (
+              <Card>
+                <CardContent className="pt-6 flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary">Patient: {selectedPatient.name}</Badge>
+                  <Badge variant="secondary">DOB: {formatDate(selectedPatient.dob)}</Badge>
+                  <Badge variant="secondary">Payer: {selectedPatient.payer}</Badge>
+                  <Badge variant="outline">Patient ID: {selectedPatient.id}</Badge>
+                </CardContent>
+              </Card>
+            )}
 
-          </div>
-        </div>
+            {isProfileLoading ? (
+              <Card>
+                <CardContent className="pt-6 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading patient profile...
+                </CardContent>
+              </Card>
+            ) : isProfileError ? (
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-sm text-destructive">
+                    {profileError instanceof Error ? profileError.message : "Failed to load patient profile."}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : profile ? (
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base font-semibold flex items-center gap-2">
+                        <UserRound className="h-4 w-4 text-primary" />
+                        Patient Details
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      <p><span className="text-muted-foreground">Name:</span> {profile.patient.first_name} {profile.patient.last_name}</p>
+                      <p><span className="text-muted-foreground">DOB:</span> {formatDate(profile.patient.dob)}</p>
+                      <p><span className="text-muted-foreground">MRN:</span> {profile.patient.mrn ?? "-"}</p>
+                      <p><span className="text-muted-foreground">Profile ID:</span> {profile.patient.id}</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base font-semibold flex items-center gap-2">
+                        <Clock3 className="h-4 w-4 text-primary" />
+                        Active Coverage
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {profile.coverage.length === 0 && (
+                        <p className="text-sm text-muted-foreground">No active coverage records found.</p>
+                      )}
+                      {profile.coverage.map((coverage) => (
+                        <div key={coverage.id} className="rounded-md border p-3 space-y-1">
+                          <p className="text-sm font-medium">{coverage.payer}</p>
+                          <p className="text-xs text-muted-foreground">Plan: {coverage.plan_name ?? "-"}</p>
+                          <p className="text-xs text-muted-foreground">Member ID: {coverage.member_id ?? "-"}</p>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <CPTSearch
+                    selected={procedure}
+                    laterality={laterality}
+                    onSelect={(selectedProcedure) => setProcedure(selectedProcedure)}
+                    onLateralityChange={setLaterality}
+                    onClearSelection={() => setProcedure(null)}
+                  />
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base font-semibold">Run Evaluation</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {procedure ? (
+                        <>
+                          <Badge variant="secondary">CPT: {procedure.cptCode}</Badge>
+                          <p className="text-sm text-muted-foreground">{procedure.label}</p>
+                          {procedure.hasLaterality && (
+                            <Badge variant="secondary">Laterality: {laterality}</Badge>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Select a procedure to evaluate this patient.</p>
+                      )}
+
+                      <Button
+                        onClick={() => {
+                          if (!selectedPatientId || !evaluationPatient || !procedure) return;
+                          evaluateMutation.mutate({
+                            patient_id: selectedPatientId,
+                            cpt_code: procedure.cptCode,
+                            payer: evaluationPatient.payer,
+                          });
+                        }}
+                        disabled={!canEvaluate || evaluateMutation.isPending}
+                        className="bg-primary text-primary-foreground hover:bg-primary/90"
+                      >
+                        {evaluateMutation.isPending ? (
+                          <span className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Evaluating...
+                          </span>
+                        ) : (
+                          "Evaluate"
+                        )}
+                      </Button>
+
+                      {evaluateMutation.isError && (
+                        <p className="text-sm text-destructive">Evaluation failed. Please try again.</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold flex items-center gap-2">
+                      <Clock3 className="h-4 w-4 text-primary" />
+                      Most Recent Authorization Evaluation
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {isRunsLoading && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading evaluations...
+                      </div>
+                    )}
+                    {isRunsError && (
+                      <p className="text-sm text-destructive">Failed to load evaluation history.</p>
+                    )}
+                    {!isRunsLoading && !isRunsError && !mostRecentRun && (
+                      <p className="text-sm text-muted-foreground">No evaluations found for this patient yet.</p>
+                    )}
+                    {!isRunsLoading && !isRunsError && mostRecentRun && (
+                      <>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary">Status: {mostRecentRun.status}</Badge>
+                          <Badge variant="secondary">CPT: {mostRecentRun.cptCode}</Badge>
+                          <Badge variant="secondary">Payer: {mostRecentRun.payer}</Badge>
+                          <Badge variant="outline">Run ID: {mostRecentRun.determinationId}</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">Requested: {formatDateTime(mostRecentRun.requestedAt)}</p>
+                        <p className="text-sm text-muted-foreground">Completed: {formatDateTime(mostRecentRun.completedAt)}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Recommendation: {recommendationLabel(mostRecentRun.recommendation)}
+                          {typeof mostRecentRun.probabilityScore === "number"
+                            ? ` (${Math.round(mostRecentRun.probabilityScore * 100)}%)`
+                            : ""}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Missing info count: {mostRecentRun.missingInfoCount}</p>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            ) : null}
+
+            {profile && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    Clinical Documents
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {dedupedDocuments.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No clinical documents found.</p>
+                  )}
+                  {dedupedDocuments.map((document) => (
+                    <div key={`${document.filename}-${document.date ?? "none"}`} className="rounded-md border px-3 py-2">
+                      <p className="text-sm font-medium break-all">{document.filename}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Type: {document.record_type} | Date: {formatDate(document.date)}
+                      </p>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+          </>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Clock3 className="h-4 w-4 text-primary" />
+                All Patients
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+                <div className="relative lg:col-span-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="Search by patient name, ID, or DOB..."
+                    className="pl-9"
+                  />
+                </div>
+
+                <Select value={payerFilter} onValueChange={setPayerFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by payer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Payers</SelectItem>
+                    {payerOptions.map((payer) => (
+                      <SelectItem key={payer} value={payer}>{payer}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {filteredPatients.length} of {patients.length} patients
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSearchTerm("");
+                    setPayerFilter("all");
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              </div>
+
+              {isPatientsLoading && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading patients...
+                </div>
+              )}
+
+              {isPatientsError && (
+                <p className="text-sm text-destructive">Failed to load patient list.</p>
+              )}
+
+              {!isPatientsLoading && !isPatientsError && patients.length === 0 && (
+                <p className="text-sm text-muted-foreground">No patients found yet.</p>
+              )}
+
+              {!isPatientsLoading && !isPatientsError && patients.length > 0 && filteredPatients.length === 0 && (
+                <p className="text-sm text-muted-foreground">No patients match the current filters.</p>
+              )}
+
+              {!isPatientsLoading && !isPatientsError && filteredPatients.map((patient) => (
+                <Card
+                  key={patient.id}
+                  className="border-muted cursor-pointer transition-colors hover:bg-accent/40"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleSelectPatient(patient)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleSelectPatient(patient);
+                    }
+                  }}
+                >
+                  <CardContent className="pt-4">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <Badge variant="secondary">Patient: {patient.name}</Badge>
+                      <Badge variant="secondary">Payer: {patient.payer}</Badge>
+                      <Badge variant="outline">ID: {patient.id}</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">DOB: {formatDate(patient.dob)}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </main>
-    </div>);
-
+    </div>
+  );
 }

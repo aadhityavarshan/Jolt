@@ -4,6 +4,48 @@ import { supabase } from '../db/supabase';
 
 const router = Router();
 
+type PatientWithCoverage = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  dob: string;
+  mrn?: string | null;
+  coverage?: Array<{ payer: string; is_active: boolean }>;
+};
+
+function mapPatientRow(row: PatientWithCoverage) {
+  const coverageRows = (row.coverage ?? []).filter((coverage) => coverage.is_active);
+
+  return {
+    id: row.id,
+    first_name: row.first_name,
+    last_name: row.last_name,
+    dob: row.dob,
+    mrn: row.mrn ?? null,
+    payer: coverageRows[0]?.payer ?? null,
+  };
+}
+
+// GET /api/patients - list all patients for profile browser
+router.get('/', async (_req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('patients')
+      .select('id, first_name, last_name, dob, mrn, coverage(payer, is_active)')
+      .order('last_name', { ascending: true })
+      .order('first_name', { ascending: true })
+      .limit(500);
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json((data ?? []).map((row) => mapPatientRow(row as PatientWithCoverage)));
+  } catch {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/patients/search?q=john
 router.get('/search', async (req, res) => {
   try {
@@ -18,17 +60,11 @@ router.get('/search', async (req, res) => {
       .select('id, first_name, last_name, dob, mrn, coverage(payer, is_active)');
 
     if (parts.length >= 2) {
-      // "John Smith" — match first name AND last name
       const [first, ...rest] = parts;
       const last = rest.join(' ');
-      query = query
-        .ilike('first_name', `%${first}%`)
-        .ilike('last_name', `%${last}%`);
+      query = query.ilike('first_name', `%${first}%`).ilike('last_name', `%${last}%`);
     } else {
-      // Single token — match either field
-      query = query.or(
-        `first_name.ilike.%${trimmed}%,last_name.ilike.%${trimmed}%`
-      );
+      query = query.or(`first_name.ilike.%${trimmed}%,last_name.ilike.%${trimmed}%`);
     }
 
     const { data, error } = await query.limit(10);
@@ -37,22 +73,7 @@ router.get('/search', async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
-    const mapped = (data ?? []).map((row) => {
-      const coverageRows = (
-        (row as { coverage?: Array<{ payer: string; is_active: boolean }> }).coverage ?? []
-      ).filter((c) => c.is_active);
-
-      return {
-        id: row.id,
-        first_name: row.first_name,
-        last_name: row.last_name,
-        dob: row.dob,
-        mrn: row.mrn,
-        payer: coverageRows[0]?.payer ?? null,
-      };
-    });
-
-    res.json(mapped);
+    res.json((data ?? []).map((row) => mapPatientRow(row as PatientWithCoverage)));
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: 'Query must be at least 1 character' });
@@ -61,18 +82,17 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// GET /api/patients/:id  — patient + active coverage + document list
+// GET /api/patients/:id  - patient + active coverage + clinical chunks
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Fetch patient, coverage, and distinct uploaded docs in parallel
     const [patientRes, coverageRes, docsRes] = await Promise.all([
       supabase.from('patients').select('*').eq('id', id).single(),
       supabase.from('coverage').select('*').eq('patient_id', id).eq('is_active', true),
       supabase
         .from('document_chunks')
-        .select('source_filename, metadata')
+        .select('content, source_filename, metadata')
         .eq('metadata->>patient_id', id)
         .eq('metadata->>type', 'clinical'),
     ]);
@@ -81,19 +101,12 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Patient not found' });
     }
 
-    // Deduplicate documents by source_filename
-    const seen = new Set<string>();
-    const documents = (docsRes.data ?? [])
-      .filter((row) => {
-        if (seen.has(row.source_filename)) return false;
-        seen.add(row.source_filename);
-        return true;
-      })
-      .map((row) => ({
-        filename: row.source_filename,
-        record_type: (row.metadata as { record_type?: string }).record_type ?? 'Unknown',
-        date: (row.metadata as { date?: string }).date ?? null,
-      }));
+    const documents = (docsRes.data ?? []).map((row) => ({
+      filename: row.source_filename,
+      record_type: (row.metadata as { record_type?: string }).record_type ?? 'Unknown',
+      date: (row.metadata as { date?: string }).date ?? null,
+      source_filename: row.source_filename,
+    }));
 
     res.json({
       patient: patientRes.data,
