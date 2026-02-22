@@ -118,4 +118,39 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// GET /api/patients/:id/documents/:filename - full text of a clinical document
+router.get('/:id/documents/:filename', async (req, res) => {
+  try {
+    const { id, filename } = req.params;
+
+    const { data, error } = await supabase
+      .from('document_chunks')
+      .select('content, chunk_index, metadata')
+      .eq('metadata->>patient_id', id)
+      .eq('source_filename', filename)
+      .eq('metadata->>type', 'clinical')
+      .order('chunk_index', { ascending: true });
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const content = data.map((chunk) => chunk.content).join('\n\n');
+    const meta = data[0].metadata as { record_type?: string; date?: string };
+
+    res.json({
+      filename,
+      content,
+      record_type: meta.record_type ?? 'Unknown',
+      date: meta.date ?? null,
+    });
+  } catch {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
